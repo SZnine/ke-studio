@@ -13,7 +13,14 @@ test("local server serves Pages paths, editor assets and WASM from the build", a
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
     const home = await fetch(base + "/ke-studio/");
-    assert.match(await home.text(), /id="choose-folder"/);
+    const html = await home.text();
+    assert.match(html, /id="choose-folder"/);
+    const build = await (await fetch(base + "/ke-studio/build.json")).json();
+    assert.match(build.revision, /^[a-f0-9]{12}$/);
+    assert.ok(html.includes("./app.css?v=" + build.revision));
+    assert.ok(html.includes('cache: "no-store"'));
+    assert.ok(html.includes('id="preview-source"'));
+    assert.ok(html.includes('id="annotation-links"'));
     for (const name of [
       "app.js",
       "app.css",
@@ -21,9 +28,12 @@ test("local server serves Pages paths, editor assets and WASM from the build", a
       "editor.worker.js",
       "framework.mjs",
       "initial.json",
+      "build.json",
       "esbuild.wasm",
     ]) {
-      const response = await fetch(base + "/ke-studio/" + name);
+      const response = await fetch(
+        base + "/ke-studio/" + name + "?v=" + build.revision,
+      );
       assert.equal(response.status, 200, name);
       const actual = new Uint8Array(await response.arrayBuffer());
       assert.deepEqual(
@@ -36,7 +46,9 @@ test("local server serves Pages paths, editor assets and WASM from the build", a
     });
     assert.equal(head.headers.get("content-type"), "application/wasm");
     assert.equal(await head.text(), "");
-    const font = await fetch(base + "/ke-studio/fonts/KaTeX_Main-Regular.woff2");
+    const font = await fetch(
+      base + "/ke-studio/fonts/KaTeX_Main-Regular.woff2",
+    );
     assert.equal(font.status, 200);
     assert.equal(font.headers.get("content-type"), "font/woff2");
     assert.equal((await fetch(base + "/ke-studio/missing.js")).status, 404);

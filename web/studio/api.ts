@@ -1,4 +1,5 @@
 import type { Workspace } from "../../src/studio/language";
+import { assetUrl } from "../../src/studio/assets";
 export const offlineMessage =
   "请先选择保存文件夹，允许 KE Studio 读写本地工作区。";
 let worker: Worker;
@@ -39,7 +40,7 @@ function startWorker() {
   worker?.terminate();
   for (const item of pending.values()) item.reject(new Error("工作区已切换。"));
   pending.clear();
-  worker = new Worker(new URL("workspace.worker.js", import.meta.url), {
+  worker = new Worker(assetUrl("workspace.worker.js"), {
     type: "module",
   });
   worker.onmessage = ({ data }) => {

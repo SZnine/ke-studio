@@ -1,6 +1,31 @@
 import { build } from "esbuild";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
+const fingerprint = createHash("sha256");
+async function hashSources(folder) {
+  for (const entry of (await fs.readdir(folder, { withFileTypes: true })).sort(
+    (a, b) => (a.name < b.name ? -1 : 1),
+  )) {
+    const file = path.join(folder, entry.name);
+    if (entry.isDirectory()) await hashSources(file);
+    else {
+      const bytes = await fs.readFile(file);
+      fingerprint.update(file.replaceAll(path.sep, "/") + "\0");
+      fingerprint.update(
+        /\.(woff2?|ttf|png|jpg)$/.test(file)
+          ? bytes
+          : bytes.toString("utf8").replace(/\r\n/g, "\n"),
+      );
+    }
+  }
+}
+for (const folder of ["web", "src", "studio", "initial", "scripts"])
+  await hashSources(folder);
+fingerprint.update(
+  (await fs.readFile("package-lock.json", "utf8")).replace(/\r\n/g, "\n"),
+);
+const revision = fingerprint.digest("hex").slice(0, 12);
 const shared = {
   bundle: true,
   platform: "browser",
@@ -8,6 +33,7 @@ const shared = {
   target: "es2022",
   minify: true,
   logLevel: "info",
+  define: { __KE_BUILD__: JSON.stringify(revision) },
 };
 const output = path.resolve("dist");
 if (output !== path.join(process.cwd(), "dist"))
@@ -65,7 +91,14 @@ await fs.copyFile(
   "node_modules/esbuild-wasm/esbuild.wasm",
   "dist/esbuild.wasm",
 );
-await fs.copyFile("web/studio/index.html", "dist/index.html");
+await fs.writeFile(
+  "dist/index.html",
+  (await fs.readFile("web/studio/index.html", "utf8")).replaceAll(
+    "__KE_BUILD__",
+    revision,
+  ),
+);
+await fs.writeFile("dist/build.json", JSON.stringify({ revision }));
 await fs.writeFile("dist/.nojekyll", "");
 const packages = new Set(
   inputs

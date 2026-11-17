@@ -841,11 +841,80 @@ main {
   color: var(--annotation-muted);
   font-size: 11px;
 }
-.source-edit {
-  color: var(--annotation-concept);
-  background: transparent;
+.source-modes {
+  display: flex;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--annotation-surface);
+}
+.source-modes button {
   border: 0;
-  padding: 7px 0 7px 8px;
+  border-radius: 7px;
+  padding: 4px 12px;
+  background: transparent;
+  color: var(--annotation-muted);
+  cursor: pointer;
+}
+.source-modes button[aria-pressed="true"] {
+  background: var(--annotation-panel);
+  color: var(--annotation-text);
+  box-shadow: 0 1px 4px #0002;
+}
+#annotation-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 10px;
+  max-height: 100px;
+  overflow: auto;
+}
+.annotation-link {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 6px;
+}
+.annotation-link button {
+  background: transparent;
+  color: inherit;
+  border: 0;
+  padding: 4px 7px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.annotation-link .annotation-link-remove {
+  flex-shrink: 0;
+  font-size: 17px;
+}
+.annotation-link-remove:hover {
+  background: #8883;
+  border-radius: 6px;
+}
+.annotation-related {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.annotation-related button {
+  border: 0;
+  border-radius: 6px;
+  background: var(--annotation-surface);
+  color: var(--annotation-text);
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.preview-evidence {
+  color: inherit;
+  padding: 1px 2px;
+}
+.preview-evidence:focus-visible {
+  outline: 2px solid var(--annotation-concept);
+  outline-offset: 2px;
 }
 .annotation-palette {
   display: flex;

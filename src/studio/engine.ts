@@ -3,6 +3,7 @@ import * as esbuild from "esbuild-wasm";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
 import type { LanguageState } from "./language";
+import { assetUrl } from "./assets";
 
 export const digest = (files: Record<string, string>) =>
   bytesToHex(
@@ -69,7 +70,7 @@ export class LanguageEngine {
   ): Promise<Compiled> {
     const revision = digest(files);
     await (compiler ||= esbuild.initialize({
-      wasmURL: new URL("esbuild.wasm", import.meta.url).href,
+      wasmURL: assetUrl("esbuild.wasm").href,
       worker: false,
     }));
     const result = await esbuild.build({
@@ -91,7 +92,7 @@ export class LanguageEngine {
           name: "language-sources",
           setup(builder) {
             builder.onResolve({ filter: /^\.\.\/framework\.mjs$/ }, () => ({
-              path: new URL("framework.mjs", import.meta.url).href,
+              path: assetUrl("framework.mjs").href,
               external: true,
             }));
             builder.onResolve({ filter: /^\.\// }, (args) => ({

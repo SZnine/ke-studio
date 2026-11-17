@@ -81,6 +81,7 @@ export function createAnnotations(host: Host) {
     activeTool = false;
   let selected: Evidence | undefined,
     currentMark: TextAnnotation | undefined,
+    previewAnchor: HTMLElement | undefined,
     disposePosition: (() => void) | undefined;
   const brushes: Partial<Record<Kind, string>> = {};
   const range = (start: number, end: number) =>
@@ -138,29 +139,32 @@ export function createAnnotations(host: Host) {
     disposePosition = undefined;
     selected = undefined;
     currentMark = undefined;
+    previewAnchor = undefined;
     selectionMark.clear();
     error();
   }
   function positionPicker() {
     disposePosition?.();
     const evidence = selected;
-    const reference = evidence
-      ? {
-          contextElement: $("question-prompt"),
-          getBoundingClientRect: () => {
-            const bounds = $("question-prompt").getBoundingClientRect();
-            const at = source.getScrolledVisiblePosition(
-              model.getPositionAt(evidence.end),
-            );
-            return new DOMRect(
-              bounds.left + (at?.left || 12),
-              bounds.top + (at?.top || 0),
-              1,
-              at?.height || 30,
-            );
-          },
-        }
-      : document.querySelector<HTMLElement>(`[data-annotation="${mode}"]`)!;
+    const reference =
+      previewAnchor ||
+      (evidence
+        ? {
+            contextElement: $("question-prompt"),
+            getBoundingClientRect: () => {
+              const bounds = $("question-prompt").getBoundingClientRect();
+              const at = source.getScrolledVisiblePosition(
+                model.getPositionAt(evidence.end),
+              );
+              return new DOMRect(
+                bounds.left + (at?.left || 12),
+                bounds.top + (at?.top || 0),
+                1,
+                at?.height || 30,
+              );
+            },
+          }
+        : document.querySelector<HTMLElement>(`[data-annotation="${mode}"]`)!);
     const update = () => {
       void computePosition(reference, picker, {
         strategy: "fixed",
@@ -209,10 +213,11 @@ export function createAnnotations(host: Host) {
     const raw = editing || activeTool;
     $("question-prompt").hidden = !raw;
     $("question-preview").hidden = raw;
-    if (!raw) updateMarkdown($("question-preview"), source.getValue());
+    if (!raw)
+      updateMarkdown($("question-preview"), source.getValue(), annotations);
     else source.layout();
-    $("edit-source").textContent = raw ? "预览" : "编辑原文";
     $("edit-source").setAttribute("aria-pressed", String(editing));
+    $("preview-source").setAttribute("aria-pressed", String(!raw));
     $("annotation-hint").textContent = !activeTool
       ? editing
         ? "可直接编辑、删除原文"
@@ -242,6 +247,30 @@ export function createAnnotations(host: Host) {
     );
     $("annotation-count").textContent = String(annotations.length);
     $("annotation-count").title = `${annotations.length} 处标注`;
+    const links = $("annotation-links");
+    links.hidden = !annotations.length;
+    links.replaceChildren();
+    for (const mark of annotations) {
+      const item = document.createElement("span");
+      item.className = "annotation-link evidence-" + mark.kind;
+      const detail = document.createElement("button");
+      detail.textContent = `${letters[mark.kind]} ${mark.name} · ${mark.quote}`;
+      detail.title = mark.declaration;
+      detail.onclick = () => showDetail(mark, detail);
+      const remove = document.createElement("button");
+      remove.className = "annotation-link-remove";
+      remove.textContent = "×";
+      remove.setAttribute(
+        "aria-label",
+        `删除 ${mark.name} 标注：${mark.quote}`,
+      );
+      remove.title = "删除标注";
+      remove.onclick = () => removeAnnotation(mark.id);
+      item.append(detail, remove);
+      links.append(item);
+    }
+    if (!$("question-preview").hidden)
+      updateMarkdown($("question-preview"), source.getValue(), annotations);
   }
   function readMarks() {
     return annotations.flatMap((mark, index) => {
@@ -307,11 +336,34 @@ export function createAnnotations(host: Host) {
   });
   $("edit-source").addEventListener("click", () => {
     if (busy) return;
-    editing = !(editing || activeTool);
+    editing = true;
     activeTool = false;
     close();
     updateTools();
     source.focus();
+  });
+  $("preview-source").addEventListener("click", () => {
+    if (busy) return;
+    editing = activeTool = false;
+    close();
+    updateTools();
+    $("question-preview").focus();
+  });
+  const openPreviewMark = (event: Event) => {
+    const anchor = (event.target as HTMLElement).closest<HTMLElement>(
+      "[data-annotation-ids]",
+    );
+    if (!anchor || busy) return;
+    const ids: string[] = JSON.parse(anchor.dataset.annotationIds!);
+    const mark = annotations.find((mark) => ids.includes(mark.id));
+    if (mark) {
+      event.preventDefault();
+      showDetail(mark, anchor);
+    }
+  };
+  $("question-preview").addEventListener("click", openPreviewMark);
+  $("question-preview").addEventListener("keydown", (event) => {
+    if (["Enter", " "].includes(event.key)) openPreviewMark(event);
   });
   $("annotation-close").addEventListener("click", close);
   picker.addEventListener("keydown", (event) => {
@@ -366,8 +418,9 @@ export function createAnnotations(host: Host) {
     updateTools();
     source.focus();
   });
-  function showDetail(mark: TextAnnotation) {
+  function showDetail(mark: TextAnnotation, anchor?: HTMLElement) {
     close();
+    previewAnchor = anchor;
     mode = mark.kind;
     selected = { ...mark };
     currentMark = mark;
@@ -375,6 +428,22 @@ export function createAnnotations(host: Host) {
     $("annotation-title").textContent = `${letters[mark.kind]} · ${mark.name}`;
     const definition = $("annotation-definition");
     definition.replaceChildren();
+    if (anchor?.dataset.annotationIds) {
+      const ids: string[] = JSON.parse(anchor.dataset.annotationIds);
+      if (ids.length > 1) {
+        const related = document.createElement("div");
+        related.className = "annotation-related";
+        for (const item of annotations.filter((item) =>
+          ids.includes(item.id),
+        )) {
+          const button = document.createElement("button");
+          button.textContent = `${letters[item.kind]} ${item.name} · ${item.quote}`;
+          button.onclick = () => showDetail(item, anchor);
+          related.append(button);
+        }
+        definition.append(related);
+      }
+    }
     const code = document.createElement("pre");
     code.textContent = mark.declaration;
     definition.append(code);
@@ -402,9 +471,10 @@ export function createAnnotations(host: Host) {
     show("detail");
   }
   source.onMouseUp((event) => {
-    if (!activeTool || editing || busy) return;
+    if (busy) return;
     const evidence = capture();
     if (evidence) {
+      if (!activeTool || editing) return;
       const existing = annotations.find(
         (mark) => mark.start === evidence.start && mark.end === evidence.end,
       );
@@ -588,13 +658,23 @@ export function createAnnotations(host: Host) {
     }
   }
   $("annotation-change").addEventListener("click", () => {
-    if (currentMark) openSearch({ ...currentMark }, currentMark);
+    if (currentMark) {
+      const anchor = previewAnchor,
+        mark = currentMark;
+      openSearch({ ...mark }, mark);
+      previewAnchor = anchor;
+      positionPicker();
+    }
   });
-  $("annotation-remove").addEventListener("click", () => {
-    annotations = annotations.filter((mark) => mark.id !== currentMark?.id);
+  function removeAnnotation(id: string) {
+    if (busy) return;
+    annotations = annotations.filter((mark) => mark.id !== id);
     renderMarks();
     close();
     host.changed();
+  }
+  $("annotation-remove").addEventListener("click", () => {
+    if (currentMark) removeAnnotation(currentMark.id);
   });
   $("annotation-locate").addEventListener("click", () => {
     if (currentMark) {

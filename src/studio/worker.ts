@@ -1,4 +1,5 @@
 import { mount, path } from "./files";
+import { assetUrl } from "./assets";
 import {
   initializeWorkspace,
   addBank,
@@ -247,9 +248,9 @@ self.onmessage = async ({ data }) => {
     if (method === "MOUNT") {
       mount(data.handle);
       folder = data.handle.name;
-      const template = await fetch(
-        new URL("initial.json", import.meta.url),
-      ).then((r) => r.json());
+      const template = await fetch(assetUrl("initial.json")).then((r) =>
+        r.json(),
+      );
       await initializeWorkspace(template);
       self.postMessage({ id, result: await openBank() });
     } else

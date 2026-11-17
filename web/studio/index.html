@@ -10,8 +10,20 @@
         (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     </script>
     <title>KE Studio</title>
-    <link rel="stylesheet" href="./app.css" />
-    <script type="module" src="./app.js"></script>
+    <link rel="stylesheet" href="./app.css?v=__KE_BUILD__" />
+    <script type="module">
+      const build = "__KE_BUILD__";
+      const latest = await fetch("./build.json", { cache: "no-store" })
+        .then((response) => response.json())
+        .catch(() => ({ revision: build }));
+      if (latest.revision !== build) {
+        const url = new URL(location.href);
+        url.searchParams.set("build", latest.revision);
+        location.replace(url);
+      } else {
+        await import("./app.js?v=" + build);
+      }
+    </script>
   </head>
   <body>
     <aside class="sidebar">
@@ -226,8 +238,11 @@
             <div class="source-toolbar">
               <strong>原文</strong
               ><span id="annotation-count" class="annotation-count">0</span
-              ><span class="spacer"></span
-              ><button id="edit-source" class="source-edit">编辑原文</button>
+              ><span class="spacer"></span>
+              <div class="source-modes" role="group" aria-label="题干显示模式">
+                <button id="preview-source" aria-pressed="true">预览</button>
+                <button id="edit-source" aria-pressed="false">编辑</button>
+              </div>
             </div>
             <div class="annotation-palette">
               <div
@@ -261,6 +276,11 @@
                 </button>
               </div>
             </div>
+            <div
+              id="annotation-links"
+              aria-label="已关联的概念和算子"
+              hidden
+            ></div>
             <div id="question-prompt" aria-label="题目原文编辑器"></div>
             <div
               id="question-preview"
@@ -360,7 +380,7 @@
                 <div class="annotation-actions">
                   <button id="annotation-change">更换 CO</button
                   ><button id="annotation-remove" class="annotation-danger">
-                    解除标注</button
+                    删除标注</button
                   ><button id="annotation-locate" class="annotation-primary">
                     定位声明
                   </button>

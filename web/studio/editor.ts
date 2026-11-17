@@ -21,10 +21,11 @@ import "monaco-editor/features/codicon/register.js";
 import type { Workspace } from "../../src/studio/language";
 import { api } from "./api";
 import { CompletionSession } from "./completion-session";
+import { assetUrl } from "../../src/studio/assets";
 
 (globalThis as any).MonacoEnvironment = {
   getWorker: () =>
-    new Worker(new URL("editor.worker.js", import.meta.url), {
+    new Worker(assetUrl("editor.worker.js"), {
       type: "module",
     }),
 };

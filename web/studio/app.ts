@@ -1,6 +1,7 @@
 import "./style.css";
 import { initStorage } from "./storage";
 import "katex/dist/katex.min.css";
+import { buildId } from "../../src/studio/assets";
 import { createDomains } from "./domains";
 import { createEditor } from "./editor";
 import { createAnnotations } from "./annotations";
@@ -322,6 +323,7 @@ function applyState(next: Workspace, loadDocument = false) {
   $("#domain-title").textContent = next.domain.name;
   $("#document-name").textContent = (next.question?.number || "题目") + ".ke";
   $("#version").textContent = "KE Studio " + next.version;
+  $("#version").title = "构建 " + buildId;
   $("#model-status").classList.toggle("ready", next.model.hasKey);
   if (!documentDirty) $("#save-status").textContent = "已保存到本机";
   domainTree.render();
