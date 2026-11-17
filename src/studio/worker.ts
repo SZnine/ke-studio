@@ -47,6 +47,9 @@ async function route(
     await selectBank(input.id);
     return openBank();
   }
+  // Editor requests already carry a prepared scope. Do not read files or join the write queue.
+  if (route === "POST /api/analyze" || route === "POST /api/format")
+    return store.inspectEditor(input, route.endsWith("/format"));
   if (route === "GET /api/state") await store.mutate(() => engine.refresh());
   const first =
     (await store.domains()).find((d) => d.id !== "common")?.id || "common";
@@ -98,27 +101,6 @@ async function route(
       }
       return;
     }
-    case "POST /api/analyze":
-    case "POST /api/format":
-      return store.mutate(async () => {
-        const state = await store.workspace(
-          domain,
-          input.questionId,
-          !!input.draft,
-        );
-        const p = store.context(state.libraries, state.usage);
-        return {
-          ...(route.endsWith("/format")
-            ? { text: engine.service.format(input.text, p) }
-            : await engine.service.inspect(
-                input.text,
-                input.offset || 0,
-                p,
-                input.completion,
-              )),
-          languageRevision: state.language.revision,
-        };
-      });
   }
   return store.mutate(async () => {
     switch (route) {

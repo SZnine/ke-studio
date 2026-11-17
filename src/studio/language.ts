@@ -32,6 +32,8 @@ export interface Workspace {
   domain: Domain;
   domains: Domain[];
   language: LanguageState;
+  /** Identifies the prepared in-memory CO scope used by the editor. */
+  editorContext: string;
   libraries: LibrarySource[];
   questions: QuestionSummary[];
   drafts: QuestionSummary[];

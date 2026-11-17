@@ -106,6 +106,7 @@ export function createEditor(element: HTMLElement, save: () => void) {
     wordWrap: "on",
     wordBasedSuggestions: "off",
     quickSuggestions: { other: true, comments: false, strings: false },
+    quickSuggestionsDelay: 0,
     suggestOnTriggerCharacters: true,
     suggest: { showWords: false, localityBonus: false },
     suggestSelection: "first",
@@ -134,15 +135,15 @@ export function createEditor(element: HTMLElement, save: () => void) {
     );
   const post = (route: string, body: unknown) =>
     api<any>("/api/" + route, "POST", body);
-  const inspect = (offset = 0, manual = false) => {
+  const inspect = (offset = 0, manual = false, completion = false) => {
     if (!state)
       return Promise.resolve({ issues: [], completions: [], highlights: [] });
     const key = [
       state.domain.id,
-      state.language.revision,
+      state.editorContext,
       model.getVersionId(),
       offset,
-      JSON.stringify({ ...options, manual }),
+      JSON.stringify({ ...options, manual, enabled: completion }),
     ].join(":");
     if (!cache.has(key)) {
       if (cache.size >= 8) cache.delete(cache.keys().next().value!);
@@ -152,9 +153,14 @@ export function createEditor(element: HTMLElement, save: () => void) {
           domain: state.domain.id,
           questionId: state.question?.id,
           draft: state.question?.draft,
+          editorContext: state.editorContext,
           text: model.getValue(),
           offset,
-          completion: { ...options, manual },
+          completion: {
+            ...options,
+            manual,
+            enabled: completion && options.enabled !== false,
+          },
         }).catch((error) => {
           cache.delete(key);
           throw error;
@@ -168,6 +174,7 @@ export function createEditor(element: HTMLElement, save: () => void) {
       domain: state.domain.id,
       questionId: state.question?.id,
       draft: state.question?.draft,
+      editorContext: state.editorContext,
       text: model.getValue(),
     });
   function register() {
@@ -179,11 +186,19 @@ export function createEditor(element: HTMLElement, save: () => void) {
       monaco.languages.registerCompletionItemProvider("ke", {
         triggerCharacters,
         async provideCompletionItems(_, position, _context, token) {
+          const version = model.getVersionId(),
+            context = state.editorContext;
           const result = await inspect(
             model.getOffsetAt(position),
             manualCompletion,
+            true,
           );
-          if (token.isCancellationRequested) return;
+          if (
+            token.isCancellationRequested ||
+            version !== model.getVersionId() ||
+            context !== state.editorContext
+          )
+            return;
           const kinds: any = {
             type: monaco.languages.CompletionItemKind.Class,
             value: monaco.languages.CompletionItemKind.Variable,
@@ -343,8 +358,13 @@ export function createEditor(element: HTMLElement, save: () => void) {
     setWorkspace(value: Workspace, loadDocument = false) {
       const newLanguage =
         !state || state.language.revision !== value.language.revision;
+      const newContext =
+        !state ||
+        state.editorContext !== value.editorContext ||
+        state.domain.id !== value.domain.id ||
+        state.storage.bank !== value.storage.bank;
       state = value;
-      cache.clear();
+      if (newContext || loadDocument) cache.clear();
       if (newLanguage) {
         configuration?.dispose();
         configuration = monaco.languages.setLanguageConfiguration("ke", {
@@ -357,7 +377,7 @@ export function createEditor(element: HTMLElement, save: () => void) {
         register();
       }
       if (loadDocument) model.setValue(value.question?.ke || "");
-      changed.fire();
+      if (newContext || newLanguage) changed.fire();
     },
     async diagnostics() {
       const version = model.getVersionId();

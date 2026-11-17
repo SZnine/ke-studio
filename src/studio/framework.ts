@@ -12,3 +12,4 @@ export {
   GrammarUtils,
 } from "langium";
 export { pinyin, match } from "pinyin-pro";
+export { TextDocument } from "vscode-languageserver-textdocument";

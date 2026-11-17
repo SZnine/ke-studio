@@ -23,6 +23,15 @@ function connection(value: boolean) {
   listeners.forEach((fn) => fn(value));
 }
 export const isConnected = () => online;
+function rpc<T>(url: string, method: string, input: unknown): Promise<T> {
+  if (!online) return Promise.reject(new Error(offlineMessage));
+  const id = ++sequence;
+  const result = new Promise<T>((resolve, reject) =>
+    pending.set(id, { resolve, reject }),
+  );
+  worker.postMessage({ id, method, url, input });
+  return result;
+}
 export function connectionError(error: unknown) {
   return error instanceof Error ? error : new Error(String(error));
 }
@@ -120,29 +129,14 @@ export async function request(
       headers: { "Content-Type": "text/event-stream" },
     });
   }
-  const result = new Promise<any>((resolve, reject) =>
-    pending.set(id, { resolve, reject }),
-  );
-  worker.postMessage({ id, method, url, input });
-  return Response.json(await result);
+  return Response.json(await rpc(url, method, input));
 }
 export async function api<T = Workspace>(
   url: string,
   method = "GET",
   data?: unknown,
 ): Promise<T> {
-  const response = await request(url, {
-    method,
-    headers:
-      data === undefined ? undefined : { "Content-Type": "application/json" },
-    body: data === undefined ? undefined : JSON.stringify(data),
-  });
-  try {
-    return await response.json();
-  } catch (error) {
-    if (error instanceof TypeError) throw connectionError(error);
-    throw new Error("无法读取工作区数据。", { cause: error });
-  }
+  return rpc<T>(url, method, data ?? {});
 }
 
 /** Keep retrying after the initial failure; a failed boot is not an initialized editor. */

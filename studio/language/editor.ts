@@ -1,4 +1,4 @@
-import { URI } from '../framework.mjs';
+import { TextDocument } from '../framework.mjs';
 import { Analysis, displayType, signature, signatures, globalSymbols, Symbol } from './semantic';
 import { Profile, operatorTable } from './profile';
 import { syntaxServices } from './parser';
@@ -172,13 +172,11 @@ export async function inspect(
   const descriptionMatches: any[] = [];
   const services = syntaxServices();
   if (!blocked && options.enabled !== false) {
-    const document = services.shared.workspace.LangiumDocumentFactory.fromString(
-      source,
-      URI.parse('memory:/completion.ke')
-    );
+    // Completion only needs text positions; constructing a LangiumDocument reparses the whole file.
+    const document = TextDocument.create('memory:/completion.ke', 'ke', 0, source);
     const provider = services.lsp.CompletionProvider;
     // Langium computes viable grammar features at the cursor, including incomplete input.
-    const features = provider.findFeaturesAt(document.textDocument, replace.start);
+    const features = provider.findFeaturesAt(document, replace.start);
     const nameSlots = features
       .filter((f: any) => f.feature.$type === 'RuleCall' && f.feature.rule.ref?.name === 'ID')
       .map((f: any) => {

@@ -7,7 +7,7 @@ import { preference, savePreference } from "./preferences";
 import { workspaceInfo } from "./workspace";
 import { ancestors, moveDomain, scopeIds, domainSources } from "./domains";
 import { scopedSources } from "./library-scope";
-import { LanguageEngine, Language } from "./engine";
+import { digest, LanguageEngine, Language } from "./engine";
 import {
   ChatMessage,
   CokeCase,
@@ -48,6 +48,14 @@ export class Store {
   readonly drafts: Questions;
   readonly reviews: Reviews;
   private queue = Promise.resolve();
+  private editorContexts = new Map<
+    string,
+    {
+      language: Language;
+      revision: string;
+      profile: ReturnType<Language["context"]> | Error;
+    }
+  >();
   constructor(
     readonly root: string,
     readonly engine: LanguageEngine,
@@ -124,6 +132,9 @@ export class Store {
         : undefined,
     );
     const local = await workspaceInfo();
+    const usage = JSON.parse(
+      (await optional(this.file(`usage/${id}.json`))) || "{}",
+    );
     return {
       storage: {
         folder: this.folder,
@@ -134,6 +145,9 @@ export class Store {
       domains,
       domain,
       language,
+      editorContext: this.engine.active
+        ? this.prepareEditorContext(libraries, usage)
+        : "",
       libraries: libraries.map((lib) => ({
         ...lib,
         entries: this.engine.active
@@ -151,9 +165,70 @@ export class Store {
             "core.keh",
           ).entries
         : [],
-      usage: JSON.parse(
-        (await optional(this.file(`usage/${id}.json`))) || "{}",
-      ),
+      usage,
+    };
+  }
+  private prepareEditorContext(
+    libraries: Awaited<ReturnType<Store["libraries"]>>,
+    usage: Record<string, number>,
+  ) {
+    const { service: language, revision } = this.engine.active!;
+    const key = digest({
+      revision,
+      libraries: JSON.stringify(libraries),
+      usage: JSON.stringify(usage),
+    });
+    if (this.editorContexts.get(key)?.language !== language) {
+      if (this.editorContexts.size >= 8)
+        this.editorContexts.delete(this.editorContexts.keys().next().value!);
+      let profile: ReturnType<Language["context"]> | Error;
+      try {
+        profile = this.context(libraries, usage, language);
+      } catch (error) {
+        // Keep the library editor accessible when an externally edited CO file is invalid.
+        profile = error instanceof Error ? error : new Error(String(error));
+      }
+      this.editorContexts.set(key, {
+        language,
+        revision,
+        profile,
+      });
+    }
+    return key;
+  }
+  /** Typing consumes an immutable scope snapshot; autosaves never hold up completion. */
+  async inspectEditor(
+    input: {
+      domain: string;
+      questionId?: string;
+      draft?: boolean;
+      editorContext?: string;
+      text: string;
+      offset?: number;
+      completion?: Parameters<Language["inspect"]>[3];
+    },
+    format = false,
+  ) {
+    let snapshot = this.editorContexts.get(input.editorContext || "");
+    if (!snapshot || snapshot.language !== this.engine.active?.service) {
+      const state = await this.mutate(() =>
+        this.workspace(input.domain, input.questionId, input.draft),
+      );
+      snapshot = this.editorContexts.get(state.editorContext);
+    }
+    if (!snapshot) throw new Error(this.engine.error || "语言尚未编译。");
+    const { language, revision, profile } = snapshot;
+    if (profile instanceof Error) throw profile;
+    return {
+      ...(format
+        ? { text: language.format(input.text, profile) }
+        : await language.inspect(
+            input.text,
+            input.offset || 0,
+            profile,
+            input.completion,
+          )),
+      languageRevision: revision,
     };
   }
   async scopedLibraries(id: string, scope?: string) {

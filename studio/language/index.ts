@@ -76,6 +76,15 @@ export async function createLanguage(files: Record<string, string>, previousCore
     }
     return p;
   }
+  // Cursor movement, completion, signatures and diagnostics share one analysis per text/scope.
+  const analyses = new WeakMap<object, { text: string; value: ReturnType<typeof analyzeProgram> }>();
+  function analyze(text: string, p: any) {
+    const saved = analyses.get(p);
+    if (saved?.text === text) return saved.value;
+    const value = analyzeProgram(parse(text, p), p, text);
+    analyses.set(p, { text, value });
+    return value;
+  }
   return {
     coreText,
     manifest: JSON.parse(files['manifest.json']),
@@ -115,14 +124,12 @@ export async function createLanguage(files: Record<string, string>, previousCore
         ])
       ]
     },
-    analyze(text: string, p: any) {
-      return analyzeProgram(parse(text, p), p, text);
-    },
+    analyze,
     inspect(text: string, offset: number, p: any, options: any = {}) {
-      return inspect(text, offset, analyzeProgram(parse(text, p), p, text), p, options);
+      return inspect(text, offset, analyze(text, p), p, options);
     },
     format(text: string, p: any) {
-      return format(text, analyzeProgram(parse(text, p), p, text), p);
+      return format(text, analyze(text, p), p);
     }
   };
 }
