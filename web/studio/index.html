@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      document.documentElement.dataset.theme =
+        localStorage.getItem("ke-studio.theme") ||
+        (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    </script>
+    <title>KE Studio</title>
+    <link rel="stylesheet" href="./app.css" />
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div><strong>KE Studio</strong><small>语言与本体工作台</small></div>
+      </div>
+      <div class="bank-picker">
+        <select id="bank-select" aria-label="当前题库"></select
+        ><button
+          id="add-bank"
+          class="icon-button"
+          aria-label="新建题库"
+          title="新建独立题库"
+        >
+          ＋
+        </button>
+      </div>
+      <div class="sidebar-heading">
+        <span>领域</span
+        ><button
+          id="add-domain"
+          class="icon-button"
+          title="新增领域"
+          aria-label="新增领域"
+        >
+          ＋
+        </button>
+      </div>
+      <nav id="domains" aria-label="领域列表"></nav>
+      <div class="sidebar-heading">
+        <span>草稿</span
+        ><button
+          id="new-draft"
+          class="icon-button"
+          aria-label="新建草稿"
+          title="快速开始，不加入题库"
+        >
+          ＋
+        </button>
+      </div>
+      <nav id="drafts" aria-label="草稿列表"></nav>
+      <p id="draft-empty" class="muted small">随时开始，稍后入库</p>
+      <div class="sidebar-bottom">
+        <button data-tab="library">CO 字典</button>
+        <button data-tab="coke">标准例</button>
+        <button data-tab="language">语言</button>
+        <button id="model-settings">
+          <span class="status-dot" id="model-status"></span>模型设置
+        </button>
+        <button id="history">修改历史</button
+        ><button id="storage-settings" title="切换本地保存文件夹">
+          保存位置
+        </button>
+        <span id="version" class="muted"></span>
+      </div>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div>
+          <span class="muted">题库 / </span
+          ><strong id="domain-title">正在加载</strong
+          ><span id="question-breadcrumb" class="muted"></span>
+        </div>
+        <div class="top-actions">
+          <button
+            id="theme-toggle"
+            class="icon-button"
+            aria-label="切换主题"
+          ></button>
+          <button
+            id="ask-model"
+            class="button primary"
+            aria-controls="assistant-panel"
+            aria-expanded="false"
+          >
+            模型对话
+          </button>
+        </div>
+      </header>
+      <div id="service-alert" class="language-alert" role="status" hidden>
+        <span id="service-message"></span>
+        <button id="reconnect" class="text-button">重新连接</button>
+      </div>
+      <div
+        id="language-alert"
+        class="language-alert"
+        role="status"
+        hidden
+      ></div>
+      <nav class="tabs" aria-label="工作区">
+        <button class="active" data-tab="questions" aria-current="page">
+          题目
+        </button>
+        <span id="view-title" class="muted"></span>
+      </nav>
+      <section id="panel-questions" class="panel">
+        <div class="toolbar">
+          <button id="add-question" class="button primary">＋ 新增题目</button>
+          <input
+            id="question-search"
+            class="search"
+            type="search"
+            aria-label="搜索题目"
+            placeholder="搜索题号或题干"
+          />
+          <span class="spacer"></span>
+          <button id="import-questions" class="button">导入题目</button>
+          <button id="export-questions" class="button">导出题库</button>
+          <input
+            id="question-files"
+            type="file"
+            accept=".ke,.json"
+            multiple
+            hidden
+          />
+        </div>
+        <div class="table-scroll question-table">
+          <table>
+            <thead>
+              <tr>
+                <th class="row-index">#</th>
+                <th>题号</th>
+                <th>题干</th>
+                <th>更新日期</th>
+              </tr>
+            </thead>
+            <tbody id="question-rows"></tbody>
+          </table>
+          <div id="questions-empty" class="empty">
+            添加第一道题，或一次导入多个 KE 文件。
+          </div>
+        </div>
+        <footer class="editor-footer">
+          <span id="question-count"></span><span>点击题目，开始标注</span>
+        </footer>
+      </section>
+      <section id="panel-editor" class="panel editor-panel" hidden>
+        <div class="question-heading">
+          <button class="text-button" id="back-questions">← 题目列表</button
+          ><span class="spacer"></span>
+          <button
+            class="icon-button"
+            id="previous-question"
+            aria-label="上一题"
+          >
+            ↑
+          </button>
+          <button class="icon-button" id="next-question" aria-label="下一题">
+            ↓
+          </button>
+          <label id="draft-scope-label" class="inline-label" hidden
+            >CO 范围<select id="draft-scope" aria-label="草稿 CO 范围"></select
+          ></label>
+          <span id="draft-label" class="muted small" hidden
+            >草稿 · 未入题库</span
+          >
+          <button id="publish-draft" class="button primary" hidden>
+            存入题库
+          </button>
+          <button class="text-button danger" id="delete-question">删除</button>
+        </div>
+        <div class="question-fields">
+          <input id="question-number" aria-label="题号" placeholder="题号" />
+          <textarea
+            id="question-prompt"
+            aria-label="题干"
+            placeholder="输入原题，或导入含题干注释的 KE 文件"
+            rows="2"
+          ></textarea>
+          <details class="question-notes">
+            <summary>备注</summary>
+            <textarea
+              id="question-notes"
+              aria-label="题目备注"
+              rows="2"
+              placeholder="标注说明或待确认的问题"
+            ></textarea>
+          </details>
+        </div>
+        <div class="toolbar">
+          <span class="file-label" id="document-name">document.ke</span
+          ><span class="spacer"></span
+          ><label class="inline-label"
+            >补全<select id="completion-style">
+              <option value="name">仅名称</option>
+              <option value="parentheses">名称与括号</option>
+              <option value="arguments">完整参数</option>
+              <option value="off">关闭</option>
+            </select></label
+          ><button class="button" id="export-document">导出</button
+          ><button class="button" id="format-document">格式化</button>
+        </div>
+        <div id="editor" aria-label="KE 编辑器"></div>
+        <div class="diagnostics">
+          <div class="diagnostics-title">
+            <span id="diagnostic-count">检查</span
+            ><span class="muted">点击定位 · Ctrl+Space 补全</span>
+          </div>
+          <div id="issues"></div>
+        </div>
+        <footer class="editor-footer">
+          <span id="save-status">正在加载…</span
+          ><span id="cursor">Ln 1, Col 1</span>
+        </footer>
+      </section>
+      <section id="panel-library" class="panel" hidden>
+        <div class="toolbar">
+          <input
+            id="library-search"
+            class="search"
+            type="search"
+            placeholder="搜索名称、中文或拼音"
+            aria-label="搜索 CO"
+          /><select id="kind-filter" aria-label="类型筛选">
+            <option value="all">全部类型</option>
+            <option value="concept">概念</option>
+            <option value="operator">算子</option>
+            <option value="constant">常量</option>
+            <option value="object">全局值</option></select
+          ><select id="dictionary-source" aria-label="字典范围">
+            <option value="all">全部可用词条</option>
+            <option value="current">当前领域</option>
+            <option value="common">通用库</option>
+            <option value="core">内置</option>
+          </select>
+          <span class="spacer"></span>
+          <details class="dictionary-manage">
+            <summary>管理</summary>
+            <div>
+              <span id="library-manage-scope">当前领域字典</span>
+              <button class="button" id="add-entry">新增词条</button>
+              <button class="button" id="import-library">导入 .keh</button>
+              <button class="button" id="export-library">导出 .keh</button>
+              <button class="button" id="count-usage">统计文件夹引用</button>
+            </div>
+          </details>
+        </div>
+        <div class="library-caption">
+          <span id="library-count"></span
+          ><span class="muted" id="library-hint"></span>
+        </div>
+        <div class="dictionary-layout">
+          <div class="dictionary-results">
+            <div id="entries"></div>
+            <div id="library-empty" class="empty" hidden>没有匹配的词条</div>
+          </div>
+          <article id="dictionary-definition" class="dictionary-definition">
+            <p class="muted">选择词条查看定义</p>
+          </article>
+        </div>
+      </section>
+      <section id="panel-coke" class="panel" hidden>
+        <div class="toolbar">
+          <span id="coke-count" class="muted"></span
+          ><span class="spacer"></span>
+          <button id="add-coke" class="button primary">添加标准例</button>
+          <button id="document-coke" class="button">从当前题添加</button>
+          <button id="check-coke" class="button">检查</button>
+          <button id="import-coke" class="button">导入</button>
+          <button id="export-coke" class="button">导出</button>
+          <input id="coke-file" type="file" accept=".json,.ke" hidden />
+        </div>
+        <div id="coke-list" class="coke-list"></div>
+      </section>
+      <section id="panel-language" class="panel" hidden>
+        <div class="toolbar">
+          <select id="language-file" aria-label="语言源文件"></select>
+          <span class="spacer"></span>
+          <button class="button" id="reload-language">重新读取</button>
+          <button class="button" id="import-language">导入</button>
+          <button class="button" id="export-language">导出语言包</button>
+          <button class="button primary" id="save-language" disabled>
+            编译并应用
+          </button>
+        </div>
+        <div class="library-caption">
+          <span>文法 → 语义 → 语言服务</span
+          ><span class="muted">普通 CO 在“CO 字典”中维护</span>
+        </div>
+        <textarea
+          id="language-source"
+          aria-label="语言源码"
+          spellcheck="false"
+        ></textarea>
+        <pre id="language-state" class="language-state" role="status"></pre>
+      </section>
+    </main>
+    <dialog id="publish-dialog" class="compact-dialog">
+      <form>
+        <h2>存入题库</h2>
+        <p class="muted small">保存后成为正式题目，草稿从列表移出。</p>
+        <label>题号<input name="number" placeholder="留空自动编号" /></label
+        ><label>保存到领域<select name="target" required></select></label>
+        <p id="publish-error" class="form-error" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" class="button" data-close>取消</button
+          ><button class="button primary" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="review-dialog" class="dialog wide">
+      <header class="dialog-header">
+        <h2>待审建议</h2>
+        <button class="icon-button" data-close aria-label="关闭建议">×</button>
+      </header>
+      <div class="dialog-body">
+        <p class="muted small">
+          勾选后采纳。未选内容会忽略；语法与标准例检查通过后才写入。
+        </p>
+        <div id="review-list"></div>
+      </div>
+    </dialog>
+    <dialog id="question-dialog">
+      <form>
+        <h2>新增题目</h2>
+        <label
+          >题号<input name="number" placeholder="留空自动编号，例如 01"
+        /></label>
+        <label
+          >题干<textarea
+            name="prompt"
+            rows="5"
+            placeholder="输入题目原文，也可以稍后填写"
+          ></textarea>
+        </label>
+        <p id="question-error" class="form-error" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" class="button" data-close>取消</button
+          ><button class="button primary" type="submit">创建并编辑</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="coke-dialog" class="coke-dialog">
+      <form>
+        <h2>标准例</h2>
+        <label>名称<input name="title" required /></label>
+        <label
+          >原文<textarea name="naturalLanguage" rows="3" required></textarea>
+        </label>
+        <label
+          >CO 声明（可选）<textarea
+            name="co"
+            rows="4"
+            spellcheck="false"
+          ></textarea>
+        </label>
+        <label
+          >KE<textarea
+            name="ke"
+            rows="8"
+            spellcheck="false"
+            required
+          ></textarea>
+        </label>
+        <label
+          >依据 / 审稿说明<textarea name="notes" rows="2"></textarea>
+        </label>
+        <label class="confirm-coke"
+          ><input type="checkbox" name="confirmed" />我已人工确认原文与 CO、KE
+          的含义一致</label
+        >
+        <p class="muted small">
+          确认后纳入更新检查；修改内容需重新确认。检查通过仅代表语法和类型通过。
+        </p>
+        <p class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="delete-coke" type="button" class="text-button" hidden>
+            删除</button
+          ><span class="spacer"></span>
+          <button type="button" class="button" data-close>取消</button
+          ><button type="submit" class="button primary">保存</button>
+        </div>
+      </form>
+    </dialog>
+    <aside id="assistant-panel" class="chat-panel" aria-label="模型对话" hidden>
+      <header class="chat-header">
+        <div>
+          <strong>模型对话</strong
+          ><small id="chat-domain" class="muted"></small>
+        </div>
+        <button id="chat-settings" class="text-button">设置</button>
+        <button id="chat-new" class="text-button">新对话</button>
+        <button id="chat-close" class="icon-button" aria-label="关闭对话">
+          ×
+        </button>
+      </header>
+      <div id="chat-context" class="chat-context"></div>
+      <div class="chat-shortcuts">
+        <button
+          id="quick-co"
+          class="button"
+          title="读取当前题目或草稿，提出字典更新建议"
+        >
+          更新 CO 库</button
+        ><button
+          id="quick-conflicts"
+          class="button"
+          title="分析题目、CO 与语法间的矛盾，给出待审建议"
+        >
+          分析冲突
+        </button>
+      </div>
+      <button id="review-open" class="review-open button" disabled>
+        待审建议
+      </button>
+      <div
+        id="chat-messages"
+        class="chat-messages"
+        role="log"
+        aria-label="对话记录"
+      ></div>
+      <button id="chat-bottom" class="text-button chat-bottom" hidden>
+        ↓ 查看新内容
+      </button>
+      <div class="chat-compose">
+        <p id="chat-draft-note" class="muted small" hidden>
+          语言草稿尚未应用；模型读取当前生效的版本。
+        </p>
+        <p id="chat-error" class="form-error" role="alert" hidden></p>
+        <form id="chat-form">
+          <textarea
+            id="chat-input"
+            rows="3"
+            aria-label="消息"
+            placeholder="检查第 03 题，或说明要调整什么…"
+          ></textarea>
+          <div class="chat-actions">
+            <span id="chat-status" class="muted small" role="status"></span>
+            <button id="chat-stop" type="button" class="button" hidden>
+              停止
+            </button>
+            <button
+              id="chat-send"
+              type="submit"
+              class="button primary"
+              disabled
+            >
+              发送
+            </button>
+          </div>
+        </form>
+        <p class="muted small chat-note">
+          字典与语法建议由你采纳，题目修改可在历史中恢复。
+        </p>
+      </div>
+    </aside>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="entry-dialog" class="dialog">
+      <form id="entry-form">
+        <header class="dialog-header">
+          <h2 id="entry-title">新增 CO</h2>
+          <button
+            type="button"
+            class="icon-button"
+            data-close
+            aria-label="关闭"
+          >
+            ×
+          </button>
+        </header>
+        <div class="dialog-body">
+          <div class="form-grid">
+            <label
+              >类型<select name="kind">
+                <option value="concept">概念</option>
+                <option value="operator">算子</option>
+                <option value="constant">常量</option>
+                <option value="object">全局值</option>
+              </select></label
+            ><label
+              >主名称<input name="name" required autocomplete="off" /></label
+            ><label>中文名<input name="label" /></label
+            ><label
+              >检索别名<input name="aliases" placeholder="多个名称用逗号分隔"
+            /></label>
+          </div>
+          <label data-kind="concept"
+            >父概念<input name="parent" placeholder="可留空"
+          /></label>
+          <div data-kind="operator">
+            <div class="section-label">
+              <strong>输入参数</strong
+              ><button type="button" id="add-parameter" class="text-button">
+                ＋ 添加参数
+              </button>
+            </div>
+            <div class="parameter-heading">
+              <span>参数名</span><span>类型</span><span>简短说明</span
+              ><span></span>
+            </div>
+            <div id="parameters"></div>
+          </div>
+          <label data-kind="operator constant object"
+            ><span id="return-label">输出类型</span
+            ><input name="type" placeholder="Type 或 set(Type)"
+          /></label>
+          <label data-kind="operator"
+            >输出说明<input name="returnDescription"
+          /></label>
+          <label
+            >说明<textarea
+              name="description"
+              rows="3"
+              placeholder="简短描述含义"
+            ></textarea>
+          </label>
+          <p class="form-error" id="entry-error" hidden></p>
+        </div>
+        <footer class="dialog-footer">
+          <button type="button" class="button" data-close>取消</button
+          ><button type="submit" class="button primary">保存</button>
+        </footer>
+      </form>
+    </dialog>
+    <dialog id="model-dialog" class="dialog">
+      <form id="model-form">
+        <header class="dialog-header">
+          <h2>模型设置</h2>
+          <button
+            type="button"
+            class="icon-button"
+            data-close
+            aria-label="关闭"
+          >
+            ×
+          </button>
+        </header>
+        <div class="dialog-body">
+          <label
+            >接口地址<input
+              name="baseUrl"
+              type="url"
+              required
+              placeholder="https://api.deepseek.com" /></label
+          ><label>模型名称<input name="model" required /></label
+          ><label
+            >输出上限（tokens）<input
+              name="maxTokens"
+              type="number"
+              min="1"
+              step="1"
+              placeholder="留空使用模型默认值" /></label
+          ><label
+            >API 密钥<input
+              name="apiKey"
+              type="password"
+              autocomplete="new-password"
+              placeholder="填写新密钥，留空保持已有配置" /></label
+          ><label class="checkbox-label"
+            ><input name="clearKey" type="checkbox" />清除已保存的密钥</label
+          >
+          <p class="muted small">
+            密钥仅保存在当前浏览器，通过 HTTPS
+            直连你配置的模型接口，不写入题库文件。
+          </p>
+          <p id="model-error" class="form-error" hidden></p>
+        </div>
+        <footer class="dialog-footer">
+          <button type="button" class="button" data-close>取消</button
+          ><button type="submit" class="button primary">保存</button>
+        </footer>
+      </form>
+    </dialog>
+    <dialog id="history-dialog" class="dialog wide">
+      <header class="dialog-header">
+        <h2>修改历史</h2>
+        <button type="button" class="icon-button" data-close aria-label="关闭">
+          ×
+        </button>
+      </header>
+      <div id="history-list" class="dialog-body"></div>
+    </dialog>
+    <dialog id="domain-dialog" class="dialog narrow">
+      <form id="domain-form">
+        <header class="dialog-header">
+          <h2>新增领域</h2>
+          <button
+            type="button"
+            class="icon-button"
+            data-close
+            aria-label="关闭"
+          >
+            ×
+          </button>
+        </header>
+        <div class="dialog-body">
+          <label
+            >领域名称<input name="name" required autocomplete="off" /></label
+          ><label>父级领域<select name="parent"></select></label>
+          <p id="domain-error" class="form-error" hidden></p>
+        </div>
+        <footer class="dialog-footer">
+          <button type="button" class="button" data-close>取消</button
+          ><button type="submit" class="button primary">保存</button>
+        </footer>
+      </form>
+    </dialog>
+    <input id="library-file" type="file" accept=".keh,.ke,text/plain" hidden />
+    <input
+      id="language-import"
+      type="file"
+      accept=".json,.ts,.langium,.keh,.md"
+      hidden
+    />
+    <input id="usage-folder" type="file" webkitdirectory multiple hidden />
+    <dialog id="storage-dialog" class="dialog narrow storage-dialog">
+      <div class="dialog-header">
+        <h2>打开本地工作区</h2>
+        <button id="close-storage" class="icon-button" aria-label="关闭" hidden>
+          ×
+        </button>
+      </div>
+      <div class="dialog-body">
+        <p>先选择保存文件夹，再开始标注。</p>
+        <p class="muted small">
+          领域、CO
+          和语法由各题库共用，题目和对话分开保存。首次使用会复制初始模板，后续更新保留本地修改。
+        </p>
+        <button id="resume-folder" class="button" hidden></button>
+        <button id="choose-folder" class="button primary">
+          选择保存文件夹
+        </button>
+        <p id="storage-status" class="muted small" role="status"></p>
+        <p class="form-error" hidden></p>
+      </div>
+    </dialog>
+    <dialog id="bank-dialog" class="dialog narrow">
+      <form id="bank-form">
+        <header class="dialog-header">
+          <h2>新建题库</h2>
+          <button
+            type="button"
+            class="icon-button"
+            data-close
+            aria-label="关闭"
+          >
+            ×
+          </button>
+        </header>
+        <div class="dialog-body">
+          <label
+            >题库名称<input name="name" required autocomplete="off"
+          /></label>
+          <p class="muted small">使用当前工作区的领域和 CO，题目独立保存。</p>
+        </div>
+        <footer class="dialog-footer">
+          <button type="button" class="button" data-close>取消</button
+          ><button class="button primary" type="submit">创建</button>
+        </footer>
+      </form>
+    </dialog>
+  </body>
+</html>

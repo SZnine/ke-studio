@@ -1,0 +1,32 @@
+{
+  "name": "ke-studio",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "description": "Local-first KE language and ontology workbench",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "node scripts/serve.mjs",
+    "template": "node scripts/template.mjs"
+  },
+  "dependencies": {
+    "@noble/hashes": "1.8.0",
+    "esbuild-wasm": "0.25.12",
+    "eventsource-parser": "3.1.1",
+    "langium": "4.1.3",
+    "markdown-it": "14.3.3",
+    "monaco-editor": "0.57.0",
+    "pinyin-pro": "3.29.5"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "14.1.2",
+    "@types/node": "^22.0.0",
+    "@types/wicg-file-system-access": "^2023.10.6",
+    "esbuild": "0.25.12",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "prettier": "3.6.2"
+  }
+}

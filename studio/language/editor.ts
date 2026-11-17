@@ -1,0 +1,472 @@
+import { URI } from '../framework.mjs';
+import { Analysis, displayType, signature, signatures, globalSymbols, Symbol } from './semantic';
+import { Profile, operatorTable } from './profile';
+import { syntaxServices } from './parser';
+import { completionSearchRank } from './completion-search';
+import { isCompatible } from './types';
+import type { Token } from './ast';
+
+export const tokenTypes = [
+  'keyword',
+  'type',
+  'function',
+  'variable',
+  'number',
+  'string',
+  'comment',
+  'operator'
+];
+export interface CompletionOptions {
+  enabled?: boolean;
+  manual?: boolean;
+  callStyle?: 'name' | 'parentheses' | 'arguments';
+}
+const esc = (text: string) => text.replace(/[\\$}]/g, '\\$&');
+const display = (type: string, p: Profile) => displayType(type);
+const order = (group: number, rank = 0, origin = 0, usage = 0) =>
+  `${group}${String(rank).padStart(5, '0')}${origin}${String(999999 - Math.min(usage, 999999)).padStart(6, '0')}`;
+export function describeSignature(s: Symbol, p: Profile) {
+  let label = s.name + p.surface.CallOpen[0];
+  const parameters = s.params.map((type, i) => {
+    if (i) label += p.style.argument + ' ';
+    const start = label.length;
+    label += `${s.parameterNames?.[i] || `arg${i + 1}`}${p.surface.Colon[0]} ${display(type, p)}`;
+    return { label: [start, label.length], documentation: s.parameterDescriptions?.[i] || '' };
+  });
+  label += `${p.surface.CallClose[0]}${p.surface.Colon[0]} ${display(s.type, p)}`;
+  return {
+    label,
+    parameters,
+    documentation: [s.description, s.returnDescription].filter(Boolean).join('\n')
+  };
+}
+
+/** The grammar owns delimiters. Nested calls, sets and tuples cannot advance an outer argument. */
+function callAt(a: Analysis, offset: number, p: Profile) {
+  const s = p.surface;
+  const opens = new Map([
+    [s.CallOpen[0], s.CallClose[0]],
+    [s.SetOpen[0], s.SetClose[0]],
+    [s.ProjectionOpen[0], s.ProjectionClose[0]]
+  ]);
+  const frames: { close: string; name?: string; index: number; start: number; args: Token[][] }[] =
+    [];
+  const tokens = a.program.tokens.filter(
+    (t) => t.end <= offset && !['comment', 'eof'].includes(t.kind)
+  );
+  for (const [i, token] of tokens.entries()) {
+    for (const frame of frames)
+      if (!(frame === frames.at(-1) && token.text === p.style.argument))
+        frame.args.at(-1)!.push(token);
+    if (opens.has(token.text)) {
+      const previous = tokens[i - 1];
+      frames.push({
+        close: opens.get(token.text)!,
+        name:
+          [s.CallOpen[0], s.ProjectionOpen[0]].includes(token.text) &&
+          previous?.kind === 'id' &&
+          !p.operatorAliases.includes(tokens[i - 2]?.text)
+            ? previous.text
+            : undefined,
+        index: 0,
+        start: token.end,
+        args: [[]]
+      });
+    } else if (frames.at(-1)?.close === token.text) {
+      frames.pop();
+    } else {
+      const frame = frames.at(-1);
+      if (!frame) continue;
+      if (token.text === p.style.argument && frame.name) {
+        frame.index++;
+        frame.args.push([]);
+      }
+    }
+  }
+  const frame = frames.at(-1);
+  if (!frame?.name) return;
+  const symbol = a.symbols.get(p.symbolAliases.operators[frame.name] || frame.name);
+  if (symbol?.kind !== 'operator') return;
+  const choices = signatures(symbol);
+  const actualType = (tokens: Token[]) => {
+    const start = tokens[0]?.start,
+      end = tokens.at(-1)?.end;
+    for (const [expr, type] of a.types) if (expr.start === start && expr.end === end) return type;
+    const t = tokens[0];
+    if (tokens.length !== 1) return '?';
+    return t.kind === 'number'
+      ? p.numberLiteralType
+      : t.kind === 'string'
+        ? p.stringLiteralType
+        : a.symbols.get(t.text)?.type || '?';
+  };
+  const score = (choice: Symbol) =>
+    frame.args.reduce(
+      (total, tokens, i) =>
+        total +
+        (i >= choice.params.length
+          ? -10
+          : tokens.length &&
+              isCompatible(actualType(tokens), choice.params[i], a.compatibility, false)
+            ? 3
+            : 0),
+      0
+    );
+  const activeSignature = choices.reduce(
+    (best, choice, i) => (score(choice) > score(choices[best]) ? i : best),
+    0
+  );
+  return { frame, choices, activeSignature };
+}
+
+export async function inspect(
+  source: string,
+  offset: number,
+  a: Analysis,
+  p: Profile,
+  options: CompletionOptions = {}
+) {
+  offset = Math.max(0, Math.min(offset, source.length));
+  const symbols = new Map(a.symbols);
+  for (const scope of a.scopes)
+    if (scope.span.start <= offset && offset <= scope.span.end)
+      for (const [name, s] of scope.symbols) symbols.set(name, s);
+  const blocked = a.program.tokens.some(
+    (t) => (t.kind === 'comment' || t.kind === 'string') && t.start < offset && offset <= t.end
+  );
+  const word = a.program.tokens.find(
+    (t) => t.kind === 'id' && t.start <= offset && offset <= t.end
+  );
+  const prefix = word ? source.slice(word.start, offset) : '';
+  const replace = word ? { start: word.start, end: word.end } : { start: offset, end: offset };
+  const before = a.program.tokens.filter(
+    (t) => t.end <= replace.start && !['comment', 'eof'].includes(t.kind)
+  );
+  const previous = before.at(-1);
+  const opens = new Set([p.surface.CallOpen[0], p.surface.SetOpen[0], p.surface.ProjectionOpen[0]]);
+  const closes = new Set([
+    p.surface.CallClose[0],
+    p.surface.SetClose[0],
+    p.surface.ProjectionClose[0]
+  ]);
+  const depth = before.reduce(
+    (n, t) => n + (opens.has(t.text) ? 1 : closes.has(t.text) ? -1 : 0),
+    0
+  );
+  const statementStart =
+    !depth && (!previous || p.surface.StatementSeparator.includes(previous.text));
+  const next = a.program.tokens.find(
+    (t) => t.start >= replace.end && !['comment', 'eof'].includes(t.kind)
+  );
+  const declarationEndsHere =
+    !next ||
+    (/[\r\n]/.test(source.slice(replace.end, next.start)) &&
+      ![
+        ...p.surface.StatementSeparator,
+        ...p.surface.Colon,
+        ...p.surface.Subtype,
+        ...p.surface.CallOpen
+      ].includes(next.text));
+  const call = callAt({ ...a, symbols }, offset, p);
+  const completions: any[] = [];
+  const descriptionMatches: any[] = [];
+  const services = syntaxServices();
+  if (!blocked && options.enabled !== false) {
+    const document = services.shared.workspace.LangiumDocumentFactory.fromString(
+      source,
+      URI.parse('memory:/completion.ke')
+    );
+    const provider = services.lsp.CompletionProvider;
+    // Langium computes viable grammar features at the cursor, including incomplete input.
+    const features = provider.findFeaturesAt(document.textDocument, replace.start);
+    const nameSlots = features
+      .filter((f: any) => f.feature.$type === 'RuleCall' && f.feature.rule.ref?.name === 'ID')
+      .map((f: any) => {
+        let node = f.feature;
+        while (node && node.$type !== 'ParserRule') node = node.$container;
+        return node?.name;
+      });
+    const inType = nameSlots.includes('NamedType');
+    const declarationName =
+      previous?.text === p.keywords.concept
+        ? 'ConceptDeclaration'
+        : p.operatorAliases.includes(previous?.text || '')
+          ? 'OperatorDeclaration'
+          : previous?.text === p.keywords.constant
+            ? 'ConstantDeclaration'
+            : undefined;
+    const domainPosition = inType || [...p.surface.Colon, ...p.surface.Subtype].includes(previous?.text || '');
+    const operator = operatorTable(p).get(previous?.text || '');
+    const leftEnd = before.at(-2)?.end;
+    const leftTypes = [...a.types].filter(([expression]) => expression.end === leftEnd).sort(([a], [b]) => a.start - b.start);
+    const leftType = leftTypes[0]?.[1] || symbols.get(before.at(-2)?.text || '')?.type;
+    const expected = operator?.category === 'arithmetic' ? p.numberLiteralType
+      : operator && ['assertion', 'ordering'].includes(operator.category) && leftType !== '?' ? leftType
+      : call?.choices[call.activeSignature].params[call.frame.index];
+    const starts = [p.keywords.concept, p.operatorAliases[0], p.keywords.constant, ...p.outputNames];
+    const declarationPrefix = statementStart && starts.some(name => name.toLowerCase().startsWith(prefix.toLowerCase()));
+    const arithmeticGap = !prefix && operator?.category === 'arithmetic';
+    const editingNumber = a.program.tokens.some(t => t.kind === 'number' && t.start < offset && offset <= t.end);
+    const candidates = declarationName ? globalSymbols(p) : symbols;
+    for (const symbol of candidates.values()) {
+      if (!nameSlots.length && !declarationName) continue;
+      if (nameSlots.includes('LocalBinding')) continue;
+      if (declarationName === 'ConstantDeclaration') continue;
+      if (declarationName === 'ConceptDeclaration' && (symbol.kind !== 'concept' || !symbol.origin))
+        continue;
+      if (
+        declarationName === 'ConceptDeclaration' &&
+        a.program.statements.some(
+          (s) =>
+            s.kind === 'concept' &&
+            s.name === symbol.name &&
+            (s.nameSpan.end < replace.start || s.nameSpan.start > replace.end)
+        )
+      )
+        continue;
+      if (declarationName === 'OperatorDeclaration' && symbol.kind !== 'operator') continue;
+      if (!declarationName && inType && symbol.kind !== 'concept') continue;
+      // Respect global declaration order, but keep local bindings visible in the output/head.
+      if (
+        p.declarationOrder &&
+        symbol.declaration &&
+        symbol.declaration.start > offset &&
+        a.symbols.get(symbol.name) === symbol
+      )
+        continue;
+      const named = symbol.declaration?.nameSpan;
+      if (!declarationName && named && named.start <= offset && offset <= named.end) continue;
+      if (!options.manual && (arithmeticGap || editingNumber)) continue;
+      if (statementStart && (!prefix || declarationPrefix)) continue;
+      // A type name belongs in a declaration/domain, not among ordinary expression values.
+      if (!declarationName && !domainPosition && symbol.kind === 'concept' && !expected?.startsWith('set{')) continue;
+      if (domainPosition && symbol.kind !== 'concept' && !symbol.type.startsWith('set{')) continue;
+      const core = !symbol.origin || symbol.origin.uri === 'language/core.keh';
+      if (!options.manual && !prefix) {
+        if (declarationName && core) continue;
+        if (!declarationName && !domainPosition && !symbol.declaration && !symbol.usage) continue;
+      }
+      const choices = signatures(symbol);
+      for (const choice of choices) {
+        if (expected && !domainPosition && !declarationName) {
+          const actual =
+            choice.kind === 'concept'
+              ? `set{${choice.type}}`
+              : choice.kind === 'operator' && expected === 'operator'
+                ? 'operator'
+                : choice.type;
+          if (!isCompatible(actual, expected, a.compatibility, false)) continue;
+        }
+        const formal =
+          choice.kind === 'concept' ? p.symbolAliases.concepts : p.symbolAliases.operators;
+        const aliases = [
+          choice.label || '',
+          ...(choice.aliases || []),
+          ...Object.entries(formal)
+            .filter(([, target]) => target === choice.name)
+            .map(([name]) => name)
+        ];
+        const directRank = completionSearchRank(prefix, choice.name, aliases, []);
+        const rank =
+          directRank >= 0
+            ? directRank
+            : completionSearchRank(prefix, choice.name, aliases, [choice.description || '']);
+        if (rank < 0) continue;
+        let insert = choice.name,
+          snippet = false,
+          completeDeclaration = declarationName === 'ConceptDeclaration';
+        if (choice.kind === 'operator') {
+          if (declarationName && !p.surface.CallOpen.includes(next?.text || '')) {
+            insert = describeSignature(choice, p).label;
+            completeDeclaration = true;
+          } else if (
+            !declarationName &&
+            expected !== 'operator' &&
+            options.callStyle &&
+            options.callStyle !== 'name'
+          ) {
+            const args =
+              options.callStyle === 'arguments'
+                ? choice.params
+                    .map(
+                      (_, i) =>
+                        '${' +
+                        (i + 1) +
+                        ':' +
+                        esc(choice.parameterNames?.[i] || `arg${i + 1}`) +
+                        '}'
+                    )
+                    .join(p.style.argument + ' ')
+                : '$0';
+            insert += p.surface.CallOpen[0] + args + p.surface.CallClose[0];
+            snippet = true;
+          }
+        }
+        if (completeDeclaration && declarationEndsHere) insert += p.style.statement;
+        const origin = choice.declaration
+          ? 0
+          : choice.origin && choice.origin.uri !== 'language/core.keh'
+            ? 1
+            : 2;
+        (directRank < 0 ? descriptionMatches : completions).push({
+          name: choice.name,
+          label: choice.label,
+          detail:
+            choice.kind === 'operator'
+              ? describeSignature(choice, p).label
+              : display(choice.type, p),
+          kind:
+            choice.kind === 'concept' ? 'type' : choice.kind === 'operator' ? 'operator' : 'value',
+          insert,
+          snippet,
+          replace,
+          // Let the language service own matching/ranking, including pinyin aliases.
+          filter: prefix || choice.name,
+          sort: order(!prefix && !declarationName && !domainPosition && choice.kind === 'operator' ? 1 : 0, rank, origin, choice.usage),
+          documentation: choice.description
+        });
+      }
+    }
+    // Use only the viable features at this position. Backtracking to the previous
+    // keyword would incorrectly re-offer `concept` after the user has finished it.
+    if (!declarationName)
+      for (const feature of features) {
+        const name = feature.feature.$type === 'Keyword' ? feature.feature.value : '';
+        if (
+          !/^[_\p{L}]/u.test(name) ||
+          !name.toLowerCase().startsWith(prefix.toLowerCase()) ||
+          completions.some((c) => c.name === name)
+        )
+          continue;
+        if (!options.manual) {
+          if (arithmeticGap || editingNumber) continue;
+          if (statementStart && !starts.includes(name)) continue;
+          if (!statementStart && !prefix) continue;
+          if (p.operatorAliases.includes(name) && name !== p.operatorAliases[0]) continue;
+        }
+        completions.push({
+          name,
+          detail: '语法',
+          kind: 'keyword',
+          insert: name,
+          replace,
+          filter: prefix || name,
+          sort: order(statementStart ? 0 : 2, Math.max(0, starts.indexOf(name)))
+        });
+      }
+    if (statementStart)
+      for (const name of p.outputNames)
+        if (
+          name.startsWith(prefix) &&
+          !a.program.statements.some(
+            (s) =>
+              s.kind === 'expression' &&
+              s.expression.kind === 'binary' &&
+              s.expression.left.kind === 'id' &&
+              s.expression.left.name === name
+          )
+        )
+          completions.push({
+            name,
+            detail: '输出',
+            kind: 'keyword',
+            insert: name,
+            replace,
+            filter: prefix || name,
+            sort: order(0)
+          });
+    if (!completions.length) completions.push(...descriptionMatches);
+    completions.sort((a, b) => a.sort.localeCompare(b.sort) || a.name.localeCompare(b.name));
+  }
+  const keywords = new Set(
+    Object.values(p.surface)
+      .flat()
+      .filter((t) => /^[_\p{L}]/u.test(t))
+  );
+  const operators = operatorTable(p);
+  const targets = new Map(a.references.map((r) => [r.start, r.target]));
+  const highlights = a.program.tokens.flatMap((t) => {
+    const s = targets.get(t.start) || a.symbols.get(t.text);
+    const type = ['number', 'string', 'comment'].includes(t.kind)
+      ? t.kind
+      : operators.has(t.text)
+        ? 'operator'
+        : keywords.has(t.text) || p.outputNames.includes(t.text)
+          ? 'keyword'
+          : s?.kind === 'concept'
+            ? 'type'
+            : s?.kind === 'operator'
+              ? 'function'
+              : s
+                ? 'variable'
+                : undefined;
+    return type ? [{ ...t, type }] : [];
+  });
+  const reference = a.references.find((r) => r.start <= offset && offset <= r.end && r.target);
+  return {
+    issues: a.issues.map((issue) => ({
+      ...issue,
+      severity: ['missing-value', 'naming-style'].includes(issue.code) ? 'warning' : 'error'
+    })),
+    highlights,
+    completions,
+    signature: call && {
+      activeSignature: call.activeSignature,
+      activeParameter: call.frame.index,
+      signatures: call.choices.map((s) => describeSignature(s, p))
+    },
+    hover: reference && {
+      start: reference.start,
+      end: reference.end,
+      label:
+        reference.target!.kind === 'operator'
+          ? describeSignature(reference.target!, p).label
+          : signature(reference.target!),
+      description: [reference.target!.label, reference.target!.description]
+        .filter(Boolean)
+        .join('\n\n')
+    }
+  };
+}
+
+/** Format whitespace only. Token text, including all string punctuation, stays intact. */
+export function format(source: string, a: Analysis, p: Profile) {
+  const tokens = a.program.tokens.filter((t) => t.kind !== 'eof');
+  const breaks = new Set(
+    a.program.delimiters
+      .filter((d) => ['statement', 'condition'].includes(d.role))
+      .map((d) => d.start)
+  );
+  const s = p.surface,
+    open = new Set([s.CallOpen[0], s.GroupOpen[0], s.ProjectionOpen[0], s.SetOpen[0]]),
+    close = new Set([s.CallClose[0], s.GroupClose[0], s.ProjectionClose[0], s.SetClose[0]]),
+    separators = new Set(Object.values(p.style));
+  let result = '',
+    depth = 0;
+  for (const [i, t] of tokens.entries()) {
+    const previous = tokens[i - 1];
+    if (t.text === s.SetClose[0]) depth = Math.max(0, depth - 1);
+    if (previous) {
+      const gap = source.slice(previous.end, t.start);
+      // Invalid characters belong to the user's text, not to the formatter.
+      if (/\S/.test(gap)) result += gap;
+      else if (
+        previous.kind === 'comment' ||
+        /[\r\n]/.test(gap) ||
+        breaks.has(previous.start) ||
+        previous.text === s.Filter[0]
+      )
+        result += '\n' + '  '.repeat(depth);
+      else if (
+        !close.has(t.text) &&
+        !separators.has(t.text) &&
+        !open.has(previous.text) &&
+        ![s.CallOpen[0], s.ProjectionOpen[0]].includes(t.text)
+      )
+        result += ' ';
+    } else result += source.slice(0, t.start).replace(/\s+$/, '');
+    result += t.text;
+    if (t.text === s.SetOpen[0]) depth++;
+  }
+  return result + (tokens.length ? source.slice(tokens.at(-1)!.end) : source);
+}

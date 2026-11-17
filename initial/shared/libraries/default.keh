@@ -1,0 +1,174 @@
+// @label 点
+// @aliases ["点"]
+// @description 平面上的几何点，作为圆锥曲线的焦点、顶点等位置对象。
+// @updated 2026-11-16
+concept Point <: Concept;
+
+// @label 直线
+// @aliases ["直线"]
+// @description 平面上的直线，可作为圆锥曲线的准线或对称轴。
+// @updated 2026-11-16
+concept Line <: Concept;
+
+// @label 平面曲线
+// @aliases ["曲线"]
+// @description 平面上的曲线对象，是圆锥曲线的父概念。
+// @updated 2026-11-16
+concept PlaneCurve <: Concept;
+
+// @label 圆锥曲线
+// @aliases ["二次曲线"]
+// @description 由平面截圆锥面得到的曲线，包含椭圆、抛物线和双曲线。
+// @updated 2026-11-16
+concept ConicSection <: PlaneCurve;
+
+// @label 离心率
+// @aliases ["e"]
+// @description 到焦点距离与到准线距离之比，决定圆锥曲线的类型：小于 1 为椭圆，等于 1 为抛物线，大于 1 为双曲线。
+// @updated 2026-11-16
+concept Eccentricity <: Number;
+
+// @label 圆锥曲线参数
+// @aliases ["参数组"]
+// @description 描述圆锥曲线的参数组，包含中心、半长轴、半短轴、焦距等。
+// @updated 2026-11-16
+concept ConicParameters <: Concept;
+
+// @label 椭圆
+// @aliases ["椭圆"]
+// @description 到两焦点距离之和为常数的平面点的集合，离心率小于 1。
+// @updated 2026-11-16
+concept Ellipse <: ConicSection;
+
+// @label 抛物线
+// @aliases ["抛物线"]
+// @description 到焦点与到准线距离相等的平面点的集合，离心率等于 1。
+// @updated 2026-11-16
+concept Parabola <: ConicSection;
+
+// @label 双曲线
+// @aliases ["双曲线"]
+// @description 到两焦点距离之差的绝对值为常数的平面点的集合，离心率大于 1。
+// @updated 2026-11-16
+concept Hyperbola <: ConicSection;
+
+// @label 构造点
+// @description 由横纵坐标构造平面点。
+// @returns 对应坐标的平面点。
+// @updated 2026-11-16
+// @param x 横坐标。
+// @param y 纵坐标。
+op point(x: Number, y: Number) : Point;
+
+// @label 横坐标
+// @description 平面点的横坐标。
+// @returns 点的 x 坐标。
+// @updated 2026-11-16
+// @param value 平面点。
+op x_coordinate(value: Point) : Number;
+
+// @label 纵坐标
+// @description 平面点的纵坐标。
+// @returns 点的 y 坐标。
+// @updated 2026-11-16
+// @param value 平面点。
+op y_coordinate(value: Point) : Number;
+
+// @label 两点距离
+// @description 平面上两点之间的欧氏距离。
+// @returns 两点间的距离。
+// @updated 2026-11-16
+// @param left 第一个点。
+// @param right 第二个点。
+op distance(left: Point, right: Point) : Number;
+
+// @label 构造椭圆
+// @description 由中心与半长轴、半短轴构造椭圆。
+// @returns 对应参数的椭圆。
+// @updated 2026-11-16
+// @param center 椭圆中心。
+// @param semi_major_axis 半长轴长 a。
+// @param semi_minor_axis 半短轴长 b。
+op ellipse(center: Point, semi_major_axis: Number, semi_minor_axis: Number) : Ellipse;
+
+// @label 构造抛物线
+// @description 由顶点与焦准距构造抛物线。
+// @returns 对应参数的抛物线。
+// @updated 2026-11-16
+// @param vertex 抛物线顶点。
+// @param focal_length 焦点到顶点的焦准距 p。
+op parabola(vertex: Point, focal_length: Number) : Parabola;
+
+// @label 构造双曲线
+// @description 由中心与半实轴、半虚轴构造双曲线。
+// @returns 对应参数的双曲线。
+// @updated 2026-11-16
+// @param center 双曲线中心。
+// @param semi_major_axis 半实轴长 a。
+// @param semi_minor_axis 半虚轴长 b。
+op hyperbola(center: Point, semi_major_axis: Number, semi_minor_axis: Number) : Hyperbola;
+
+// @label 半长轴
+// @description 椭圆或双曲线的半长轴（半实轴）长 a。
+// @returns 半长轴长。
+// @updated 2026-11-16
+// @param value 圆锥曲线。
+op semi_major_axis(value: ConicSection) : Number;
+
+// @label 半短轴
+// @description 椭圆或双曲线的半短轴（半虚轴）长 b。
+// @returns 半短轴长。
+// @updated 2026-11-16
+// @param value 圆锥曲线。
+op semi_minor_axis(value: ConicSection) : Number;
+
+// @label 焦距
+// @description 两焦点之间的距离 2c。
+// @returns 焦距 2c。
+// @updated 2026-11-16
+// @param value 圆锥曲线。
+op focal_distance(value: ConicSection) : Number;
+
+// @label 离心率
+// @description 圆锥曲线的离心率 e = c / a。
+// @returns 离心率。
+// @updated 2026-11-16
+// @param value 圆锥曲线。
+op eccentricity(value: ConicSection) : Eccentricity;
+
+// @label 由焦点准线定圆锥曲线
+// @description 按统一定义：到焦点距离与到准线距离之比为 e 的点集，e 小于 1 为椭圆、等于 1 为抛物线、大于 1 为双曲线。
+// @returns 由该焦点、准线与离心率确定的圆锥曲线。
+// @updated 2026-11-16
+// @param focus 焦点。
+// @param directrix 准线。
+// @param value 离心率 e。
+op conic_from_focus_directrix(focus: Point, directrix: Line, value: Eccentricity) : ConicSection;
+
+// @label 焦点
+// @description 圆锥曲线的焦点集合：椭圆与双曲线有两个焦点，抛物线有一个。
+// @returns 焦点集合。
+// @updated 2026-11-16
+// @param value 圆锥曲线。
+op focus(value: ConicSection) : set(Point);
+
+// @label 顶点
+// @description 圆锥曲线在对称轴上的顶点集合。
+// @returns 顶点集合。
+// @updated 2026-11-16
+// @param value 圆锥曲线。
+op vertex(value: ConicSection) : set(Point);
+
+// @label 对称轴
+// @description 圆锥曲线的对称轴集合。
+// @returns 对称轴集合。
+// @updated 2026-11-16
+// @param value 圆锥曲线。
+op axis_of_symmetry(value: ConicSection) : set(Line);
+
+// @label 准线
+// @description 圆锥曲线对应的准线集合。
+// @returns 准线集合。
+// @updated 2026-11-16
+// @param value 圆锥曲线。
+op directrix(value: ConicSection) : set(Line);
