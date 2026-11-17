@@ -377,17 +377,21 @@ document.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((item) =>
   ),
 );
 const completionStyle = $<HTMLSelectElement>("#completion-style");
-completionStyle.value = localStorage.getItem("ke-studio.completion") || "name";
+const savedCompletion = localStorage.getItem("ke-studio.completion");
+completionStyle.value =
+  !savedCompletion || savedCompletion === "name" ? "smart" : savedCompletion;
 function updateCompletion() {
   const value = completionStyle.value;
   ke.setOptions({
     enabled: value !== "off",
     callStyle:
-      value === "arguments"
-        ? "arguments"
-        : value === "parentheses"
-          ? "parentheses"
-          : "name",
+      value === "smart"
+        ? "smart"
+        : value === "arguments"
+          ? "arguments"
+          : value === "parentheses"
+            ? "parentheses"
+            : "name",
   });
   localStorage.setItem("ke-studio.completion", value);
 }

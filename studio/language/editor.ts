@@ -5,6 +5,7 @@ import { syntaxServices } from './parser';
 import { completionSearchRank } from './completion-search';
 import { isCompatible } from './types';
 import type { Token } from './ast';
+import { pendingBindings, clauseContinuation } from './completion-edits';
 
 export const tokenTypes = [
   'keyword',
@@ -19,7 +20,8 @@ export const tokenTypes = [
 export interface CompletionOptions {
   enabled?: boolean;
   manual?: boolean;
-  callStyle?: 'name' | 'parentheses' | 'arguments';
+  callStyle?: 'smart' | 'name' | 'parentheses' | 'arguments';
+  onEnter?: boolean;
 }
 const esc = (text: string) => text.replace(/[\\$}]/g, '\\$&');
 const display = (type: string, p: Profile) => displayType(type);
@@ -39,6 +41,12 @@ export function describeSignature(s: Symbol, p: Profile) {
     parameters,
     documentation: [s.description, s.returnDescription].filter(Boolean).join('\n')
   };
+}
+
+/** Declarations use CO input/output types; parameter names remain visible in signature help. */
+export function describeDeclaration(s: Symbol, p: Profile) {
+  const params = s.params.map((type) => display(type, p)).join(p.style.argument + ' ');
+  return `${s.name}${p.surface.CallOpen[0]}${params}${p.surface.CallClose[0]}${p.surface.Colon[0]} ${display(s.type, p)}`;
 }
 
 /** The grammar owns delimiters. Nested calls, sets and tuples cannot advance an outer argument. */
@@ -149,10 +157,21 @@ export async function inspect(
     p.surface.SetClose[0],
     p.surface.ProjectionClose[0]
   ]);
-  const depth = before.reduce(
-    (n, t) => n + (opens.has(t.text) ? 1 : closes.has(t.text) ? -1 : 0),
-    0
-  );
+  const frames: { token: Token; name?: string; filtered: boolean; index: number }[] = [];
+  for (const [i, token] of before.entries()) {
+    if (opens.has(token.text))
+      frames.push({ token, name: before[i - 1]?.text, filtered: false, index: 0 });
+    else if (closes.has(token.text)) frames.pop();
+    else if (p.surface.Filter.includes(token.text) && frames.at(-1)) frames.at(-1)!.filtered = true;
+    else if (p.surface.ArgumentSeparator.includes(token.text) && frames.at(-1))
+      frames.at(-1)!.index++;
+  }
+  const frame = frames.at(-1);
+  const depth = frames.length;
+  const insideSetType =
+    !!frame &&
+    p.surface.CallOpen.includes(frame.token.text) &&
+    p.surface.SetKeyword.includes(frame.name || '');
   const statementStart =
     !depth && (!previous || p.surface.StatementSeparator.includes(previous.text));
   const next = a.program.tokens.find(
@@ -171,6 +190,7 @@ export async function inspect(
   const completions: any[] = [];
   const descriptionMatches: any[] = [];
   const services = syntaxServices();
+  const smart = options.callStyle === 'smart';
   if (!blocked && options.enabled !== false) {
     // Completion only needs text positions; constructing a LangiumDocument reparses the whole file.
     const document = TextDocument.create('memory:/completion.ke', 'ke', 0, source);
@@ -184,7 +204,8 @@ export async function inspect(
         while (node && node.$type !== 'ParserRule') node = node.$container;
         return node?.name;
       });
-    const inType = nameSlots.includes('NamedType');
+    // Membership domains are expressions in the grammar, but set(T) still takes a type.
+    const inType = insideSetType || nameSlots.includes('NamedType');
     const declarationName =
       previous?.text === p.keywords.concept
         ? 'ConceptDeclaration'
@@ -193,21 +214,111 @@ export async function inspect(
           : previous?.text === p.keywords.constant
             ? 'ConstantDeclaration'
             : undefined;
-    const domainPosition = inType || [...p.surface.Colon, ...p.surface.Subtype].includes(previous?.text || '');
+    const domainPosition =
+      inType || [...p.surface.Colon, ...p.surface.Subtype].includes(previous?.text || '');
+    const typeKeywords = new Set([...p.surface.SetKeyword, ...(p.surface.NamedType || [])]);
+    const constructorPrefix =
+      domainPosition && !!prefix && p.surface.SetKeyword.some((name) => name.startsWith(prefix));
+    const clauseGap =
+      !prefix &&
+      !!frame?.filtered &&
+      p.surface.SetOpen.includes(frame.token.text) &&
+      p.surface.ConditionSeparator.includes(previous?.text || '');
+    const clauseStart =
+      !!frame?.filtered &&
+      p.surface.SetOpen.includes(frame.token.text) &&
+      [...p.surface.ConditionSeparator, ...p.surface.Filter].includes(previous?.text || '');
+    const declaration = a.program.statements.find(
+      (statement) =>
+        statement.kind === 'operator' &&
+        statement.start <= replace.start &&
+        (replace.start <= statement.end || !source.slice(statement.end, replace.start).trim())
+    );
+    const knownOperator =
+      declaration && declaration.kind === 'operator'
+        ? globalSymbols(p).get(declaration.name)
+        : undefined;
+    const returnPosition =
+      smart &&
+      domainPosition &&
+      !frames.length &&
+      declaration?.kind === 'operator' &&
+      knownOperator?.kind === 'operator';
+    const parameterPosition =
+      smart &&
+      inType &&
+      declaration?.kind === 'operator' &&
+      frame?.name === declaration.name &&
+      knownOperator?.kind === 'operator';
+    if (knownOperator && (returnPosition || parameterPosition)) {
+      for (const choice of signatures(knownOperator)) {
+        const type = returnPosition ? choice.type : choice.params[frame!.index];
+        if (!type) continue;
+        const name = display(type, p);
+        if (
+          !name.toLowerCase().startsWith(prefix.toLowerCase()) ||
+          completions.some((item) => item.name === name)
+        )
+          continue;
+        completions.push({
+          name,
+          kind: 'type',
+          detail: returnPosition ? 'CO 返回类型' : 'CO 参数类型',
+          insert: name + (returnPosition && declarationEndsHere ? p.style.statement : ''),
+          replace,
+          filter: prefix || name,
+          sort: order(0, 0, 0, 999999)
+        });
+      }
+    }
+    if (smart && clauseStart) {
+      for (const item of pendingBindings(a, offset, symbols)) {
+        if (!item.name.toLowerCase().startsWith(prefix.toLowerCase())) continue;
+        completions.push({
+          name: item.name,
+          kind: 'value',
+          detail: '声明输出中尚未绑定的变量',
+          insert:
+            item.name +
+            p.surface.Colon[0] +
+            ' ${1' +
+            (item.type ? ':' + esc(item.type) : '') +
+            '}$0',
+          snippet: true,
+          suggest: true,
+          replace,
+          filter: prefix || item.name,
+          sort: order(0, 0, 0, 999999)
+        });
+      }
+    }
     const operator = operatorTable(p).get(previous?.text || '');
     const leftEnd = before.at(-2)?.end;
-    const leftTypes = [...a.types].filter(([expression]) => expression.end === leftEnd).sort(([a], [b]) => a.start - b.start);
+    const leftTypes = [...a.types]
+      .filter(([expression]) => expression.end === leftEnd)
+      .sort(([a], [b]) => a.start - b.start);
     const leftType = leftTypes[0]?.[1] || symbols.get(before.at(-2)?.text || '')?.type;
-    const expected = operator?.category === 'arithmetic' ? p.numberLiteralType
-      : operator && ['assertion', 'ordering'].includes(operator.category) && leftType !== '?' ? leftType
-      : call?.choices[call.activeSignature].params[call.frame.index];
-    const starts = [p.keywords.concept, p.operatorAliases[0], p.keywords.constant, ...p.outputNames];
-    const declarationPrefix = statementStart && starts.some(name => name.toLowerCase().startsWith(prefix.toLowerCase()));
+    const expected =
+      operator?.category === 'arithmetic'
+        ? p.numberLiteralType
+        : operator && ['assertion', 'ordering'].includes(operator.category) && leftType !== '?'
+          ? leftType
+          : call?.choices[call.activeSignature].params[call.frame.index];
+    const starts = [
+      p.keywords.concept,
+      p.operatorAliases[0],
+      p.keywords.constant,
+      ...p.outputNames
+    ];
+    const declarationPrefix =
+      statementStart && starts.some((name) => name.toLowerCase().startsWith(prefix.toLowerCase()));
     const arithmeticGap = !prefix && operator?.category === 'arithmetic';
-    const editingNumber = a.program.tokens.some(t => t.kind === 'number' && t.start < offset && offset <= t.end);
+    const editingNumber = a.program.tokens.some(
+      (t) => t.kind === 'number' && t.start < offset && offset <= t.end
+    );
     const candidates = declarationName ? globalSymbols(p) : symbols;
     for (const symbol of candidates.values()) {
-      if (!nameSlots.length && !declarationName) continue;
+      if (!nameSlots.length && !declarationName && !inType) continue;
       if (nameSlots.includes('LocalBinding')) continue;
       if (declarationName === 'ConstantDeclaration') continue;
       if (declarationName === 'ConceptDeclaration' && (symbol.kind !== 'concept' || !symbol.origin))
@@ -234,10 +345,16 @@ export async function inspect(
         continue;
       const named = symbol.declaration?.nameSpan;
       if (!declarationName && named && named.start <= offset && offset <= named.end) continue;
-      if (!options.manual && (arithmeticGap || editingNumber)) continue;
+      if (!options.manual && (arithmeticGap || editingNumber || clauseGap)) continue;
       if (statementStart && (!prefix || declarationPrefix)) continue;
       // A type name belongs in a declaration/domain, not among ordinary expression values.
-      if (!declarationName && !domainPosition && symbol.kind === 'concept' && !expected?.startsWith('set{')) continue;
+      if (
+        !declarationName &&
+        !domainPosition &&
+        symbol.kind === 'concept' &&
+        !expected?.startsWith('set{')
+      )
+        continue;
       if (domainPosition && symbol.kind !== 'concept' && !symbol.type.startsWith('set{')) continue;
       const core = !symbol.origin || symbol.origin.uri === 'language/core.keh';
       if (!options.manual && !prefix) {
@@ -275,23 +392,23 @@ export async function inspect(
           completeDeclaration = declarationName === 'ConceptDeclaration';
         if (choice.kind === 'operator') {
           if (declarationName && !p.surface.CallOpen.includes(next?.text || '')) {
-            insert = describeSignature(choice, p).label;
+            insert = describeDeclaration(choice, p);
             completeDeclaration = true;
           } else if (
             !declarationName &&
             expected !== 'operator' &&
             options.callStyle &&
-            options.callStyle !== 'name'
+            options.callStyle !== 'name' &&
+            ![...p.surface.CallOpen, ...p.surface.ProjectionOpen].includes(next?.text || '')
           ) {
             const args =
-              options.callStyle === 'arguments'
+              options.callStyle === 'arguments' || smart
                 ? choice.params
                     .map(
                       (_, i) =>
                         '${' +
                         (i + 1) +
-                        ':' +
-                        esc(choice.parameterNames?.[i] || `arg${i + 1}`) +
+                        (smart ? '' : ':' + esc(choice.parameterNames?.[i] || `arg${i + 1}`)) +
                         '}'
                     )
                     .join(p.style.argument + ' ')
@@ -300,7 +417,28 @@ export async function inspect(
             snippet = true;
           }
         }
+        let suggest = smart && snippet;
+        if (
+          smart &&
+          call &&
+          !declarationName &&
+          !domainPosition &&
+          choice.kind !== 'operator' &&
+          call.choices.every((s) => s.params.length > call.frame.index + 1) &&
+          call.frame.args[call.frame.index].every(
+            (t) => replace.start <= t.start && t.end <= replace.end
+          ) &&
+          (!next || p.surface.CallClose.includes(next.text))
+        ) {
+          insert += p.style.argument + ' ';
+          suggest = true;
+        }
         if (completeDeclaration && declarationEndsHere) insert += p.style.statement;
+        if (
+          choice.kind === 'concept' &&
+          completions.some((item) => item.kind === 'type' && item.name === choice.name)
+        )
+          continue;
         const origin = choice.declaration
           ? 0
           : choice.origin && choice.origin.uri !== 'language/core.keh'
@@ -317,10 +455,19 @@ export async function inspect(
             choice.kind === 'concept' ? 'type' : choice.kind === 'operator' ? 'operator' : 'value',
           insert,
           snippet,
+          suggest,
           replace,
           // Let the language service own matching/ranking, including pinyin aliases.
           filter: prefix || choice.name,
-          sort: order(!prefix && !declarationName && !domainPosition && choice.kind === 'operator' ? 1 : 0, rank, origin, choice.usage),
+          sort: order(
+            constructorPrefix ||
+              (!prefix && !declarationName && !domainPosition && choice.kind === 'operator')
+              ? 1
+              : 0,
+            rank,
+            origin,
+            choice.usage
+          ),
           documentation: choice.description
         });
       }
@@ -330,6 +477,7 @@ export async function inspect(
     if (!declarationName)
       for (const feature of features) {
         const name = feature.feature.$type === 'Keyword' ? feature.feature.value : '';
+        if (inType && !typeKeywords.has(name)) continue;
         if (
           !/^[_\p{L}]/u.test(name) ||
           !name.toLowerCase().startsWith(prefix.toLowerCase()) ||
@@ -337,19 +485,25 @@ export async function inspect(
         )
           continue;
         if (!options.manual) {
-          if (arithmeticGap || editingNumber) continue;
+          if (arithmeticGap || editingNumber || clauseGap) continue;
           if (statementStart && !starts.includes(name)) continue;
-          if (!statementStart && !prefix) continue;
+          if (!statementStart && !prefix && !domainPosition) continue;
           if (p.operatorAliases.includes(name) && name !== p.operatorAliases[0]) continue;
         }
+        const setConstructor = domainPosition && p.surface.SetKeyword.includes(name);
+        const snippet = setConstructor && !p.surface.CallOpen.includes(next?.text || '');
         completions.push({
           name,
           detail: '语法',
           kind: 'keyword',
-          insert: name,
+          insert: name + (snippet ? p.surface.CallOpen[0] + '$0' + p.surface.CallClose[0] : ''),
+          snippet,
           replace,
           filter: prefix || name,
-          sort: order(statementStart ? 0 : 2, Math.max(0, starts.indexOf(name)))
+          sort: order(
+            statementStart || (setConstructor && constructorPrefix) ? 0 : 2,
+            Math.max(0, starts.indexOf(name))
+          )
         });
       }
     if (statementStart)
@@ -402,6 +556,7 @@ export async function inspect(
   });
   const reference = a.references.find((r) => r.start <= offset && offset <= r.end && r.target);
   return {
+    continuationEdits: smart && options.onEnter ? clauseContinuation(source, offset, a, p) : [],
     issues: a.issues.map((issue) => ({
       ...issue,
       severity: ['missing-value', 'naming-style'].includes(issue.code) ? 'warning' : 'error'

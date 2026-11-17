@@ -107,12 +107,25 @@ export function createEditor(element: HTMLElement, save: () => void) {
     wordBasedSuggestions: "off",
     quickSuggestions: { other: true, comments: false, strings: false },
     quickSuggestionsDelay: 0,
+    formatOnType: true,
     suggestOnTriggerCharacters: true,
-    suggest: { showWords: false, localityBonus: false },
+    suggest: {
+      showWords: false,
+      localityBonus: false,
+      snippetsPreventQuickSuggestions: false,
+    },
     suggestSelection: "first",
     "semanticHighlighting.enabled": true,
   });
   const model = editor.getModel()!;
+  editor.addAction({
+    id: "ke.completeNext",
+    label: "继续补全",
+    run() {
+      editor.trigger("ke", "editor.action.triggerParameterHints", {});
+      editor.trigger("ke", "editor.action.triggerSuggest", {});
+    },
+  });
   let manualCompletion = false;
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => {
     manualCompletion = true;
@@ -123,7 +136,7 @@ export function createEditor(element: HTMLElement, save: () => void) {
   });
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, save);
   let state: Workspace,
-    options: any = { callStyle: "name" };
+    options: any = { callStyle: "smart" };
   let providers: monaco.IDisposable[] = [],
     configuration: monaco.IDisposable | undefined;
   const changed = new monaco.Emitter<void>();
@@ -135,7 +148,12 @@ export function createEditor(element: HTMLElement, save: () => void) {
     );
   const post = (route: string, body: unknown) =>
     api<any>("/api/" + route, "POST", body);
-  const inspect = (offset = 0, manual = false, completion = false) => {
+  const inspect = (
+    offset = 0,
+    manual = false,
+    completion = false,
+    onEnter = false,
+  ) => {
     if (!state)
       return Promise.resolve({ issues: [], completions: [], highlights: [] });
     const key = [
@@ -143,7 +161,7 @@ export function createEditor(element: HTMLElement, save: () => void) {
       state.editorContext,
       model.getVersionId(),
       offset,
-      JSON.stringify({ ...options, manual, enabled: completion }),
+      JSON.stringify({ ...options, manual, enabled: completion, onEnter }),
     ].join(":");
     if (!cache.has(key)) {
       if (cache.size >= 8) cache.delete(cache.keys().next().value!);
@@ -159,6 +177,7 @@ export function createEditor(element: HTMLElement, save: () => void) {
           completion: {
             ...options,
             manual,
+            onEnter,
             enabled: completion && options.enabled !== false,
           },
         }).catch((error) => {
@@ -219,15 +238,43 @@ export function createEditor(element: HTMLElement, save: () => void) {
                 ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
                 : undefined,
               range: range(s.replace.start, s.replace.end),
-              command:
-                s.kind === "operator" && s.snippet
+              command: s.suggest
+                ? { id: "ke.completeNext", title: "继续补全" }
+                : s.kind === "operator" && s.snippet
                   ? {
                       id: "editor.action.triggerParameterHints",
                       title: "参数提示",
                     }
-                  : undefined,
+                  : s.kind === "keyword" && s.snippet
+                    ? { id: "editor.action.triggerSuggest", title: "类型补全" }
+                    : undefined,
             })),
           };
+        },
+      }),
+      monaco.languages.registerOnTypeFormattingEditProvider("ke", {
+        autoFormatTriggerCharacters: ["\n"],
+        async provideOnTypeFormattingEdits(_, position, _ch, _options, token) {
+          if (options.callStyle !== "smart" || options.enabled === false)
+            return [];
+          const version = model.getVersionId(),
+            context = state.editorContext;
+          const result = await inspect(
+            model.getOffsetAt(position),
+            false,
+            false,
+            true,
+          );
+          if (
+            token.isCancellationRequested ||
+            version !== model.getVersionId() ||
+            context !== state.editorContext
+          )
+            return [];
+          return (result.continuationEdits || []).map((edit: any) => ({
+            range: range(edit.start, edit.end),
+            text: edit.text,
+          }));
         },
       }),
       monaco.languages.registerSignatureHelpProvider("ke", {

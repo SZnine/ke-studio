@@ -9,6 +9,7 @@
 - `core.keh`：内置 CO。`@contract` 表达高阶算子的参数/返回关系，普通算子只需签名和说明。
 - `ontology.ts`、`library.ts`：声明元数据、库组合和当前文法下的声明渲染。
 - `editor.ts`：消费解析、符号和文法位置，提供补全、签名、悬停、着色与格式化。
+- `completion-edits.ts`：从当前作用域和 CO 签名提供待绑定变量，处理继续书写条件时的分隔符。
 - `ast.ts`、`types.ts`、`call-contract.ts`、`symbol-aliases.ts`、`completion-search.ts`：共享数据和小型辅助函数。
 - `index.ts`：稳定的语言服务入口；`manifest.json` 标识人的语言版本，程序另用内容摘要识别实际改动。
 
@@ -29,3 +30,7 @@
 人工标准例在独立的 `banks/<题库>/coke/<领域>.json` 中维护。语言或 CO 更新前，已确认例子的语法和类型必须通过；业务含义仍以人工确认的原文和备注为准。
 
 自动补全以当前书写意图为准：语句开头优先 concept/op/const/output，concept/op 后只给对应类别；表达式隐藏裸概念和未使用的通用算子，结合局部变量、声明与参数或断言左侧类型筛选。算术符号后不自动弹出空前缀列表。输入名称、中文或拼音仍可检索全库；Ctrl+Space 显式请求时展开当前位置允许的候选。此策略在 editor.ts 中维护。
+
+“智能”模式用 CO 的输入输出类型补齐声明，调用用 Tab 参数占位和签名提示；已有括号不重复插入。类型位置（包括成员绑定中的嵌套 set）仅提供类型与类型构造器。条件分隔符后的空位置优先提供尚未绑定的输出变量，能从 CO 参数推断出唯一类型时预填，不能确定则留空；不臆测数学数值。继续条件按 Enter 时，仅在前一条完整且未带分隔符时插入文法规定的 ConditionSeparator。手动展开仍保留合法的其他选择。
+
+实现参考 [VS Code 参数占位](https://code.visualstudio.com/docs/editing/userdefinedsnippets)、[TypeScript Language Server 调用补全](https://github.com/typescript-language-server/typescript-language-server/blob/master/src/completion.ts) 和 [Langium 作用域解析](https://langium.org/docs/learn/workflow/resolve_cross_references/)。候选、分隔符和补全编辑均由本语言包产生，Monaco 只负责展示和应用；调整 CO 签名或文法后无需改界面代码。
