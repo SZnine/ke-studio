@@ -28,6 +28,9 @@ vi.mock("../src/studio/files", () => {
       disk.files.has(name) ? readFile(name) : undefined,
     files: {
       readFile,
+      appendFile: async (name: string, text: string) => {
+        disk.files.set(name, (disk.files.get(name) || "") + text);
+      },
       readdir: async (name: string) => {
         disk.reads(name);
         return [
@@ -60,6 +63,9 @@ beforeEach(() => {
   disk.files.clear();
   disk.reads.mockClear();
   disk.writes.mockClear();
+  disk.writes.mockImplementation(async (name: string, text: string) => {
+    disk.files.set(name, text);
+  });
   put("shared/domains.json", [
     { id: "common", name: "通用" },
     { id: "parent", name: "父领域" },
@@ -161,6 +167,62 @@ it("uses the same prepared CO scope to generate annotation edits without filesys
   expect(disk.reads).not.toHaveBeenCalled();
   expect(disk.writes).not.toHaveBeenCalled();
 });
+it("creates CO in the current domain, persists incomplete signatures and activates them after completion", async () => {
+  const initial = await store.workspace("child");
+  const created = await store.createCo("child", {
+    kind: "concept",
+    name: "Arc",
+    parent: "Shape",
+    type: "Arc",
+    params: [],
+  });
+  expect(created.libraries.find((l) => l.id === "child")?.text).toContain(
+    "concept Arc <: Shape;",
+  );
+  expect(created.editorContext).not.toBe(initial.editorContext);
+  expect(disk.files.get("shared/libraries/parent.keh")).not.toContain("Arc");
+  const pending = await store.createCo("child", {
+    kind: "operator",
+    name: "trace",
+    label: "轨迹",
+    type: "",
+    params: [],
+  });
+  expect(
+    pending.libraries
+      .find((l) => l.id === "child")
+      ?.entries.find((e) => e.name === "trace"),
+  ).toMatchObject({ draft: true, type: "", params: [] });
+  expect(disk.files.get("shared/libraries/child.keh")).toContain("@draft");
+  const result = await store.inspectEditor({
+    ...input(pending.editorContext),
+    text: "",
+    annotation: { kind: "operator", name: "trace", params: [] },
+  });
+  expect(result).toMatchObject({ edits: [], draft: true });
+  await store.editLibrary("child", [
+    {
+      key: "operator:trace()",
+      entry: { kind: "operator", name: "trace", type: "Arc", params: [] },
+    },
+  ]);
+  const completed = await store.workspace("child");
+  expect(disk.files.get("shared/libraries/child.keh")).not.toContain("@draft");
+  expect(
+    names(await store.inspectEditor(input(completed.editorContext))),
+  ).toContain("trace");
+  await expect(
+    store.createCo("child", {
+      kind: "concept",
+      name: "Arc",
+      type: "Arc",
+      params: [],
+    }),
+  ).rejects.toThrow("同名 CO");
+  expect(disk.files.get("banks/default/history.jsonl")).toContain(
+    "从原文工具新建 CO",
+  );
+});
 
 it("persists evidence with a question and preserves it on unrelated edits", async () => {
   const annotation = {
@@ -193,6 +255,28 @@ it("persists evidence with a question and preserves it on unrelated edits", asyn
       })
     ).annotations,
   ).toEqual([]);
+});
+it("creates a draft's CO in its selected domain so it stays available in that scope", async () => {
+  const file = "banks/default/drafts/child/draft.json";
+  put(file, { ...JSON.parse(disk.files.get(file)!), coScope: "parent" });
+  const state = await store.createCo(
+    "child",
+    { kind: "concept", name: "Arc", parent: "Shape", type: "Arc", params: [] },
+    "draft",
+    true,
+  );
+  expect(disk.files.get("shared/libraries/parent.keh")).toContain(
+    "concept Arc <: Shape;",
+  );
+  expect(disk.files.get("shared/libraries/child.keh")).not.toContain("Arc");
+  expect(state.domain.id).toBe("child");
+  expect(state.question?.id).toBe("draft");
+  const result = await store.inspectEditor({
+    ...input(state.editorContext),
+    text: "",
+    annotation: { kind: "concept", name: "Arc" },
+  });
+  expect(result).toMatchObject({ declaration: "concept Arc <: Shape;" });
 });
 
 it("reuses unchanged CO scopes and replaces them after CO or ranking changes", async () => {

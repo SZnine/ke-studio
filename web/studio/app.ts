@@ -125,6 +125,7 @@ const annotations = createAnnotations({
   changed: changedQuestion,
   save: () => void run(saveDocument),
   notify,
+  apply: (next) => applyState(next),
 });
 let state: Workspace;
 const displayType = (type: string) =>
@@ -483,7 +484,7 @@ function parameterRow(value = { name: "", type: "", description: "" }) {
     input.placeholder = placeholder;
     input.setAttribute("aria-label", placeholder);
     input.value = (value as any)[key] || "";
-    input.required = key !== "description";
+    input.required = key === "name";
     row.append(input);
   }
   row.append(button("×", () => row.remove(), "icon-button"));
@@ -494,12 +495,11 @@ function entryKindChanged() {
   entryForm.querySelectorAll<HTMLElement>("[data-kind]").forEach((element) => {
     element.hidden = !element.dataset.kind!.split(" ").includes(kind);
   });
-  field(entryForm, "type").required = kind !== "concept";
+  field(entryForm, "type").required = !["concept", "operator"].includes(kind);
   $("#parameters")
     .querySelectorAll<HTMLInputElement>("input")
     .forEach((input) => {
-      input.required =
-        kind === "operator" && input.dataset.param !== "description";
+      input.required = kind === "operator" && input.dataset.param === "name";
     });
   $("#return-label").textContent = kind === "operator" ? "输出类型" : "类型";
 }
@@ -573,7 +573,12 @@ entryForm.addEventListener("submit", async (event) => {
     });
     applyState(await api(workspaceUrl()));
     $<HTMLDialogElement>("#entry-dialog").close();
-    notify("CO 已保存，补全已更新。");
+    notify(
+      entry.kind === "operator" &&
+        (!entry.type || entry.params.some((p) => !p.type))
+        ? "已保存为待完善 CO。"
+        : "CO 已保存，补全已更新。",
+    );
   } catch (error) {
     formError("#entry-error", error);
   } finally {

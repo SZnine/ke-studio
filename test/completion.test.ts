@@ -56,11 +56,11 @@ describe("Contextual completion", () => {
     expect(concepts.length).toBeGreaterThan(0);
     expect(concepts.every((c) => c.kind === "type")).toBe(true);
     expect(concepts.map((c) => c.name)).not.toContain("Shape");
-    expect(concepts.every((c) => c.insert.endsWith(";"))).toBe(true);
+    expect(concepts.every((c) => c.insert.endsWith(";\n"))).toBe(true);
     const operators = await complete("op §");
     expect(operators.every((c) => c.kind === "operator")).toBe(true);
     expect(operators.map((c) => c.name)).not.toContain("get_year");
-    expect(operators.find((c) => c.name === "length").insert).toMatch(/;$/);
+    expect(operators.find((c) => c.name === "length").insert).toMatch(/;\n$/);
   });
   it("keeps types out of expression choices and hides unrelated global operators", async () => {
     const result = await complete(
@@ -150,9 +150,9 @@ output = { (x1,x2,x3) | x1: set(Real), x2: set(Real), `;
     const declaration = (await smart("op mid§")).find(
       (c) => c.name === "midpoint",
     );
-    expect(declaration?.insert).toBe("midpoint(Point, Point) : Point;");
+    expect(declaration?.insert).toBe("midpoint(Point, Point) : Point;\n");
     const range = await smart("op midpoint(Point, Point): §");
-    expect(range[0].insert).toBe("Point;");
+    expect(range[0].insert).toBe("Point;\n");
     expect((await smart("op midpoint(Point, Point): Po§;"))[0].insert).toBe(
       "Point",
     );

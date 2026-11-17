@@ -110,7 +110,11 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
   const table = operatorTable(p),
     scopes: Analysis['scopes'] = [];
   const quantities = new Set<string>();
-  const numeric = (t: string) => isNumericType(t, p) || quantities.has(t);
+  // Numeric means Number and every declared subtype of it, not a hardcoded name list.
+  const numeric = (t: string) =>
+    isNumericType(t, p) ||
+    quantities.has(t) ||
+    isCompatible(t, p.numberLiteralType, relations, false);
   let ruleHead: Expr | undefined;
   let initializing: string | undefined;
   let env = symbols,
@@ -129,6 +133,15 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
       (relations[p.numberLiteralType] ??= []).push(alias);
       (relations[alias] ??= []).push(p.numberLiteralType);
     }
+  // Inheritance edges only: compatibility aliases and @compatible rules are not parents.
+  const inheritance: Profile['compatibility'] = Object.assign(
+    Object.create(null),
+    Object.fromEntries(
+      Object.entries(p.typeMetadata)
+        .filter(([, metadata]) => metadata.parent)
+        .map(([name, metadata]) => [name, [metadata.parent!]])
+    )
+  );
   let equationDepth = 0;
   const issue = (s: Span, code: string, message: string, fix?: Issue['fix']) =>
     issues.push({ ...s, code, message, fix });
@@ -276,12 +289,16 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
         const parent = typeOf(d.parent),
           name = canonicalName(p.symbolAliases.concepts, d.name);
         checkType(d.parent);
-        if (d.parent.element || scalarTypes.includes(parent))
+        if (d.parent.element)
           issue(d.parent, 'unknown-type', 'A concept parent must be an object concept.');
         else if (global(parent)?.kind === 'concept') {
-          if (parent === name || isCompatible(parent, name, relations, false))
+          // A built-in concept can be a parent, so documents can write Number and its subtypes.
+          if (parent === name || isCompatible(parent, name, inheritance, false))
             issue(d.parent, 'inheritance-cycle', `Cyclic inheritance involving '${d.name}'.`);
-          else (relations[name] ??= []).push(parent);
+          else {
+            (relations[name] ??= []).push(parent);
+            (inheritance[name] ??= []).push(parent);
+          }
         }
       }
     }

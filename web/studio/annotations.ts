@@ -1,5 +1,13 @@
 import * as monaco from "monaco-editor/editor/editor.api.js";
+import {
+  autoUpdate,
+  computePosition,
+  flip,
+  offset,
+  shift,
+} from "@floating-ui/dom";
 import { api } from "./api";
+import { declarationDrag } from "./declaration-drag";
 import { completionSearchRank } from "../../src/completion-search";
 import {
   displayType,
@@ -16,22 +24,26 @@ interface Host {
   ke: ReturnType<typeof createEditor>;
   changed(): void;
   save(): void;
+  apply(state: Workspace): void;
   notify(message: string, error?: boolean): void;
 }
-const letters = { concept: "C", operator: "O", var: "V" };
-const dragType = "application/x-ke-declaration";
+type Kind = TextAnnotation["kind"];
+type Evidence = Pick<TextAnnotation, "start" | "end" | "quote">;
+const titles = { concept: "概念", operator: "算子" };
+const letters = { concept: "C", operator: "O" };
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.querySelector<T>("#" + id)!;
 
-/** Text stays plain and editable. Monaco tracks evidence ranges without another document format. */
+/** One selected CO is a reusable brush. Source text and evidence stay in the question. */
 export function createAnnotations(host: Host) {
   const source = monaco.editor.create($("question-prompt"), {
     language: "plaintext",
     theme: "ke-site",
     automaticLayout: true,
-    fontFamily: "Google Sans Code, monospace",
-    fontSize: 14,
-    lineHeight: 27,
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif',
+    fontSize: 15,
+    lineHeight: 30,
     wordWrap: "on",
     lineNumbers: "off",
     glyphMargin: false,
@@ -40,55 +52,165 @@ export function createAnnotations(host: Host) {
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
     renderLineHighlight: "none",
-    padding: { top: 14, bottom: 14 },
+    padding: { top: 16, bottom: 16 },
     quickSuggestions: false,
     wordBasedSuggestions: "off",
     dragAndDrop: false,
     overviewRulerLanes: 0,
-    scrollbar: { verticalScrollbarSize: 8 },
-    ariaLabel: "题目原文，可划选后关联概念、算子或实例",
+    readOnly: true,
+    scrollbar: { verticalScrollbarSize: 6 },
+    ariaLabel: "题目原文，划选文字关联当前概念或算子",
   });
   const model = source.getModel()!,
     ke = host.ke.editor,
     keModel = ke.getModel()!;
-  source.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, host.save);
   const marks = source.createDecorationsCollection(),
     selectionMark = source.createDecorationsCollection();
-  const dropMark = ke.createDecorationsCollection();
+  const picker = $("annotation-picker"),
+    search = $<HTMLInputElement>("annotation-search");
+  const form = $<HTMLFormElement>("annotation-create");
+  document.body.append(picker);
   let annotations: TextAnnotation[] = [],
-    mode: TextAnnotation["kind"] | undefined;
+    mode: Kind = "concept",
+    choices: Entry[] = [],
+    active = 0;
   let loading = false,
     busy = false,
-    selected: { start: number; end: number; quote: string } | undefined;
-  let active = 0,
-    choices: Entry[] = [],
-    drag: { start: number; end: number } | TextAnnotation | undefined;
-  let dragSequence = 0;
+    editing = false;
+  let selected: Evidence | undefined,
+    currentMark: TextAnnotation | undefined,
+    disposePosition: (() => void) | undefined;
+  const brushes: Partial<Record<Kind, string>> = {};
   const range = (start: number, end: number) =>
     monaco.Range.fromPositions(
       model.getPositionAt(start),
       model.getPositionAt(end),
     );
-  const codeRange = (start: number, end: number) =>
-    monaco.Range.fromPositions(
-      keModel.getPositionAt(start),
-      keModel.getPositionAt(end),
+  const identify = () => {
+    const s = host.workspace();
+    return `${s.storage.bank}:${s.domain.id}:${s.question?.id}`;
+  };
+  const allEntries = () => [
+    ...new Map(
+      [
+        ...host.workspace().coreEntries,
+        ...host.workspace().libraries.flatMap((l) => l.entries),
+      ].map((e) => [entryKey(e), e]),
+    ).values(),
+  ];
+  const brush = () =>
+    allEntries().find((entry) => entryKey(entry) === brushes[mode]);
+  const resolveMark = (mark: TextAnnotation) => {
+    const entries = allEntries().filter(
+      (entry) => entry.kind === mark.kind && entry.name === mark.name,
     );
-  const picker = $("annotation-picker"),
-    search = $<HTMLInputElement>("annotation-search");
+    return (
+      entries.find(
+        (entry) =>
+          entry.kind !== "operator" ||
+          JSON.stringify(entry.params.map((p) => p.type)) ===
+            JSON.stringify(mark.params),
+      ) || (entries.length === 1 ? entries[0] : undefined)
+    );
+  };
   const error = (message = "") => {
     $("annotation-error").textContent = message;
     $("annotation-error").hidden = !message;
   };
-  const identify = () => {
+  const inspect = (extra: object) => {
     const s = host.workspace();
-    return s && `${s.storage.bank}:${s.domain.id}:${s.question?.id}`;
+    return api<any>("/api/analyze", "POST", {
+      domain: s.domain.id,
+      questionId: s.question?.id,
+      draft: s.question?.draft,
+      editorContext: s.editorContext,
+      text: host.ke.getText(),
+      completion: { enabled: false },
+      ...extra,
+    });
   };
+  const drag = declarationDrag(host.ke, inspect, identify, host.notify);
   function close() {
     picker.hidden = true;
-    selectionMark.clear();
+    disposePosition?.();
+    disposePosition = undefined;
     selected = undefined;
+    currentMark = undefined;
+    selectionMark.clear();
     error();
+  }
+  function positionPicker() {
+    disposePosition?.();
+    const evidence = selected;
+    const reference = evidence
+      ? {
+          contextElement: $("question-prompt"),
+          getBoundingClientRect: () => {
+            const bounds = $("question-prompt").getBoundingClientRect();
+            const at = source.getScrolledVisiblePosition(
+              model.getPositionAt(evidence.end),
+            );
+            return new DOMRect(
+              bounds.left + (at?.left || 12),
+              bounds.top + (at?.top || 0),
+              1,
+              at?.height || 30,
+            );
+          },
+        }
+      : $("annotation-brush");
+    const update = () => {
+      void computePosition(reference, picker, {
+        strategy: "fixed",
+        placement: "bottom-start",
+        middleware: [offset(9), flip(), shift({ padding: 12 })],
+      }).then(({ x, y }) =>
+        Object.assign(picker.style, { left: `${x}px`, top: `${y}px` }),
+      );
+    };
+    const stop = autoUpdate(reference, picker, update);
+    const scroll = source.onDidScrollChange(update);
+    disposePosition = () => {
+      stop();
+      scroll.dispose();
+    };
+  }
+  function capture(): Evidence | undefined {
+    const selection = source.getSelection();
+    if (
+      !selection ||
+      selection.isEmpty() ||
+      !model.getValueInRange(selection).trim()
+    )
+      return;
+    return {
+      start: model.getOffsetAt(selection.getStartPosition()),
+      end: model.getOffsetAt(selection.getEndPosition()),
+      quote: model.getValueInRange(selection),
+    };
+  }
+  function updateTools() {
+    document
+      .querySelectorAll<HTMLButtonElement>("[data-annotation]")
+      .forEach((button) =>
+        button.setAttribute(
+          "aria-pressed",
+          String(button.dataset.annotation === mode),
+        ),
+      );
+    const entry = brush();
+    $("annotation-brush").dataset.kind = mode;
+    $("annotation-brush").firstElementChild!.textContent = entry
+      ? entry.label || entry.name
+      : `选择${titles[mode]}`;
+    $("edit-source").textContent = editing ? "完成编辑" : "编辑原文";
+    $("edit-source").setAttribute("aria-pressed", String(editing));
+    $("annotation-hint").textContent = editing
+      ? "完成编辑后，划选文字进行标注"
+      : entry
+        ? `划选即标注 · ${entry.name}${entry.draft ? " · 待完善" : ""}`
+        : "选一次 CO，即可连续划选";
+    source.updateOptions({ readOnly: !editing });
   }
   function renderMarks() {
     marks.set(
@@ -99,57 +221,30 @@ export function createAnnotations(host: Host) {
           stickiness:
             monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
           hoverMessage: [
-            { value: `${letters[mark.kind]} · **${mark.name}**` },
+            {
+              value: `${letters[mark.kind]} · **${mark.name}**${mark.draft ? " · 待完善" : ""}`,
+            },
             { value: "```ke\n" + mark.declaration + "\n```" },
+            { value: "点击查看或更换关联" },
           ],
         },
       })),
     );
-    const links = $("annotation-links");
-    links.replaceChildren();
-    for (const mark of annotations) {
-      const chip = document.createElement("span");
-      chip.className = "annotation-link annotation-" + mark.kind;
-      chip.draggable = true;
-      chip.title =
-        mark.quote + "\n" + mark.declaration + "\n拖入 KE 区可定位或补齐声明";
-      const label = document.createElement("button");
-      label.textContent = letters[mark.kind] + " " + mark.name;
-      label.addEventListener("click", () => {
-        source.setSelection(range(mark.start, mark.end));
-        source.revealRangeInCenter(range(mark.start, mark.end));
-        source.focus();
-      });
-      const remove = document.createElement("button");
-      remove.textContent = "×";
-      remove.title = "解除原文关联，保留代码";
-      remove.setAttribute("aria-label", "解除 " + mark.name + " 的原文关联");
-      remove.addEventListener("click", () => {
-        annotations = annotations.filter((a) => a.id !== mark.id);
-        renderMarks();
-        host.changed();
-      });
-      chip.append(label, remove);
-      chip.addEventListener("dragstart", (event) => {
-        drag = mark;
-        event.dataTransfer!.setData(dragType, mark.id);
-        event.dataTransfer!.effectAllowed = "copy";
-      });
-      chip.addEventListener("dragend", clearDrag);
-      links.append(chip);
-    }
+    $("annotation-count").textContent = String(annotations.length);
+    $("annotation-count").title = `${annotations.length} 处标注`;
   }
   function readMarks() {
     return annotations.flatMap((mark, index) => {
       const current = marks.getRange(index);
-      if (!current || model.getValueInRange(current) !== mark.quote) return [];
-      return [
-        {
-          ...mark,
-          start: model.getOffsetAt(current.getStartPosition()),
-          end: model.getOffsetAt(current.getEndPosition()),
-        },
-      ];
+      return !current || model.getValueInRange(current) !== mark.quote
+        ? []
+        : [
+            {
+              ...mark,
+              start: model.getOffsetAt(current.getStartPosition()),
+              end: model.getOffsetAt(current.getEndPosition()),
+            },
+          ];
     });
   }
   source.onDidChangeModelContent(() => {
@@ -159,82 +254,39 @@ export function createAnnotations(host: Host) {
     close();
     host.changed();
   });
-  function open() {
-    const current = source.getSelection();
-    if (
-      !mode ||
-      !current ||
-      current.isEmpty() ||
-      !model.getValueInRange(current).trim()
-    )
-      return;
-    selected = {
-      start: model.getOffsetAt(current.getStartPosition()),
-      end: model.getOffsetAt(current.getEndPosition()),
-      quote: model.getValueInRange(current),
-    };
-    selectionMark.set([
-      { range: current, options: { inlineClassName: "evidence-selection" } },
-    ]);
-    $("annotation-quote").textContent = letters[mode] + " · " + selected.quote;
-    $("annotation-values").hidden = mode !== "var";
-    $<HTMLInputElement>("annotation-name").value =
-      selected.quote.match(/[A-Za-z_][A-Za-z0-9_]*$/)?.[0] || "";
-    $<HTMLInputElement>("annotation-value").value = "";
-    search.placeholder =
-      mode === "var" ? "选择实例类型，支持拼音缩写" : "名称、中文或拼音缩写";
-    search.value =
-      mode === "var"
-        ? annotations.find(
-            (mark) =>
-              mark.kind === "concept" &&
-              mark.start === selected!.start &&
-              mark.end === selected!.end,
-          )?.name || ""
-        : "";
-    picker.hidden = false;
-    error();
-    renderChoices();
-    search.focus();
-  }
-  function setMode(value: TextAnnotation["kind"]) {
-    mode = mode === value && picker.hidden ? undefined : value;
-    document
-      .querySelectorAll<HTMLButtonElement>("[data-annotation]")
-      .forEach((button) =>
-        button.setAttribute(
-          "aria-pressed",
-          String(button.dataset.annotation === mode),
-        ),
-      );
-    $("annotation-hint").textContent = mode
-      ? `${letters[mode]} · 划选原文后搜索，Esc 取消`
-      : "选择 C / O / V，再划选原文";
+  function setMode(kind: Kind) {
+    if (busy) return;
+    mode = kind;
+    editing = false;
     close();
-    open();
+    updateTools();
+    source.focus();
   }
   document
     .querySelectorAll<HTMLButtonElement>("[data-annotation]")
     .forEach((button) =>
       button.addEventListener("click", () =>
-        setMode(button.dataset.annotation as TextAnnotation["kind"]),
+        setMode(button.dataset.annotation as Kind),
       ),
     );
   for (const [kind, key] of [
     ["concept", monaco.KeyCode.KeyC],
     ["operator", monaco.KeyCode.KeyO],
-    ["var", monaco.KeyCode.KeyV],
-  ] as const)
+  ] as const) {
     source.addCommand(monaco.KeyMod.Alt | key, () => setMode(kind));
-  source.onMouseUp(() => {
-    if (picker.hidden) open();
-  });
+    source.addCommand(key, () => setMode(kind), "editorReadonly");
+  }
+  source.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, host.save);
   source.addCommand(monaco.KeyCode.Escape, () => {
     close();
-    mode = undefined;
-    document
-      .querySelectorAll("[data-annotation]")
-      .forEach((b) => b.setAttribute("aria-pressed", "false"));
+    source.setPosition(source.getPosition()!);
+  });
+  $("edit-source").addEventListener("click", () => {
+    if (busy) return;
+    editing = !editing;
+    close();
+    updateTools();
+    source.focus();
   });
   $("annotation-close").addEventListener("click", close);
   picker.addEventListener("keydown", (event) => {
@@ -243,36 +295,120 @@ export function createAnnotations(host: Host) {
       close();
       source.focus();
     }
-    if (
-      event.key === "Enter" &&
-      (event.target as HTMLElement).closest("#annotation-values")
-    ) {
-      event.preventDefault();
-      void choose(active);
-    }
   });
   document.addEventListener("pointerdown", (event) => {
     if (
       !picker.hidden &&
-      !(event.target as HTMLElement).closest(".source-pane")
+      !picker.contains(event.target as Node) &&
+      !(event.target as HTMLElement).closest(".annotation-palette")
     )
       close();
   });
+  function show(view: "search" | "create" | "detail") {
+    $("annotation-search-view").hidden = view !== "search";
+    form.hidden = view !== "create";
+    $("annotation-detail").hidden = view !== "detail";
+    picker.hidden = false;
+    error();
+    $("annotation-quote").textContent = selected?.quote || "";
+    $("annotation-quote").hidden = !selected;
+    if (selected)
+      selectionMark.set([
+        {
+          range: range(selected.start, selected.end),
+          options: { inlineClassName: "evidence-selection" },
+        },
+      ]);
+    positionPicker();
+  }
+  function openSearch(evidence?: Evidence, mark?: TextAnnotation) {
+    close();
+    selected = evidence;
+    currentMark = mark;
+    $("annotation-title").textContent = `选择${titles[mode]}`;
+    $("annotation-new").textContent = `＋ 新建${titles[mode]}`;
+    search.value = "";
+    renderChoices();
+    show("search");
+    search.focus();
+  }
+  $("annotation-brush").addEventListener("click", () => {
+    if (busy) return;
+    const evidence = editing ? undefined : capture();
+    editing = false;
+    updateTools();
+    openSearch(evidence);
+  });
+  function showDetail(mark: TextAnnotation) {
+    close();
+    mode = mark.kind;
+    selected = { ...mark };
+    currentMark = mark;
+    updateTools();
+    $("annotation-title").textContent = `${letters[mark.kind]} · ${mark.name}`;
+    const definition = $("annotation-definition");
+    definition.replaceChildren();
+    const code = document.createElement("pre");
+    code.textContent = mark.declaration;
+    definition.append(code);
+    const entry = resolveMark(mark),
+      pending = entry ? !!entry.draft : !!mark.draft;
+    const hint = document.createElement("p");
+    hint.textContent = pending
+      ? "待完善 CO · 补齐签名后可生成声明"
+      : "拖入 KE 编辑区可定位或补齐声明";
+    definition.append(hint);
+    definition.draggable = !pending && !!entry;
+    definition.ondragstart = (event) =>
+      drag.start(
+        event,
+        entry
+          ? {
+              ...mark,
+              type: entry.type,
+              params: entry.params.map((p) => p.type),
+            }
+          : mark,
+      );
+    definition.ondragend = drag.clear;
+    $<HTMLButtonElement>("annotation-locate").disabled = !!pending || !entry;
+    show("detail");
+  }
+  source.onMouseUp((event) => {
+    if (editing || busy) return;
+    const evidence = capture();
+    if (evidence) {
+      const existing = annotations.find(
+        (mark) => mark.start === evidence.start && mark.end === evidence.end,
+      );
+      if (existing) {
+        showDetail(existing);
+        return;
+      }
+      const entry = brush();
+      if (entry) void apply(entry, evidence);
+      else openSearch(evidence);
+    } else if (event.target.position) {
+      const at = model.getOffsetAt(event.target.position);
+      const mark = annotations.find(
+        (mark) => mark.start <= at && at < mark.end,
+      );
+      if (mark) showDetail(mark);
+    }
+  });
+  function highlightChoice() {
+    $("annotation-results")
+      .querySelectorAll<HTMLButtonElement>("button")
+      .forEach((button, i) => {
+        button.classList.toggle("active", i === active);
+        button.setAttribute("aria-selected", String(i === active));
+      });
+  }
   function renderChoices() {
-    const state = host.workspace();
-    if (!state) return;
-    const all = new Map<string, Entry>();
-    for (const entry of [
-      ...state.coreEntries,
-      ...state.libraries.flatMap((library) => library.entries),
-    ])
-      all.set(entryKey(entry), entry);
-    const query = search.value.trim();
-    choices = [...all.values()]
-      .filter(
-        (entry) =>
-          entry.kind === (mode === "operator" ? "operator" : "concept"),
-      )
+    const state = host.workspace(),
+      query = search.value.trim();
+    choices = allEntries()
+      .filter((entry) => entry.kind === mode)
       .map((entry) => ({
         entry,
         rank: completionSearchRank(
@@ -289,44 +425,47 @@ export function createAnnotations(host: Host) {
           (state.usage[b.entry.name] || 0) - (state.usage[a.entry.name] || 0) ||
           a.entry.name.localeCompare(b.entry.name),
       )
-      .slice(0, 12)
+      .slice(0, 8)
       .map((item) => item.entry);
     active = 0;
     const list = $("annotation-results");
     list.replaceChildren();
+    const type = (value: string) =>
+      displayType(value, state.language.editor.typeSyntax);
     for (const [index, entry] of choices.entries()) {
       const button = document.createElement("button");
       button.className = "annotation-result";
       button.setAttribute("role", "option");
-      const name = document.createElement("strong"),
+      const icon = document.createElement("span");
+      icon.className = "co-icon co-" + mode;
+      icon.textContent = letters[mode];
+      const text = document.createElement("span"),
+        label = document.createElement("strong"),
         detail = document.createElement("small");
-      name.textContent = entry.name + (entry.label ? " · " + entry.label : "");
-      const type = (value: string) =>
-        displayType(value, state.language.editor.typeSyntax);
+      label.textContent = entry.label || entry.name;
       detail.textContent =
-        entry.kind === "operator"
-          ? `(${entry.params.map((p) => type(p.type)).join(", ")}) → ${type(entry.type)}`
+        entry.name +
+        (entry.kind === "operator"
+          ? `(${entry.params.map((p) => type(p.type)).join(", ")}) → ${type(entry.type) || "未填写"}${entry.draft ? " · 待完善" : ""}`
           : entry.parent
-            ? "父级 " + entry.parent
-            : "概念";
-      button.append(name, detail);
+            ? " · " + entry.parent
+            : "");
+      text.append(label, detail);
+      button.append(icon, text);
       button.addEventListener("click", () => void choose(index));
       list.append(button);
     }
-    if (!choices.length) list.textContent = "当前 CO 中没有匹配项";
+    if (!choices.length) {
+      const empty = document.createElement("p");
+      empty.className = "annotation-form-hint";
+      empty.textContent = "没有匹配的 CO，可直接新建";
+      list.append(empty);
+    }
     highlightChoice();
-  }
-  function highlightChoice() {
-    $("annotation-results")
-      .querySelectorAll<HTMLButtonElement>("button")
-      .forEach((button, i) => {
-        button.classList.toggle("active", i === active);
-        button.setAttribute("aria-selected", String(i === active));
-      });
   }
   search.addEventListener("input", renderChoices);
   search.addEventListener("keydown", (event) => {
-    if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       active = Math.max(
         0,
@@ -336,198 +475,208 @@ export function createAnnotations(host: Host) {
         ),
       );
       highlightChoice();
+      $("annotation-results")
+        .querySelector(".active")
+        ?.scrollIntoView({ block: "nearest" });
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      void choose(active);
+      if (choices.length) void choose(active);
+      else openCreate();
     }
   });
-  const inspect = (extra: object) => {
-    const state = host.workspace();
-    return api<any>("/api/analyze", "POST", {
-      domain: state.domain.id,
-      questionId: state.question?.id,
-      draft: state.question?.draft,
-      editorContext: state.editorContext,
-      text: host.ke.getText(),
-      completion: { enabled: false },
-      ...extra,
-    });
-  };
-  function applyEdits(edits: { start: number; end: number; text: string }[]) {
-    if (!edits.length) return;
-    ke.pushUndoStop();
-    ke.executeEdits(
-      "ke-annotation",
-      edits.map((edit) => ({
-        range: codeRange(edit.start, edit.end),
-        text: edit.text,
-      })),
-    );
-    ke.pushUndoStop();
-  }
   async function choose(index: number) {
     const entry = choices[index];
-    if (busy || !entry || !mode || !selected) return;
+    if (!entry || busy) return;
+    brushes[mode] = entryKey(entry);
+    updateTools();
+    if (selected) await apply(entry, { ...selected });
+    else {
+      close();
+      source.focus();
+    }
+  }
+  async function apply(entry: Entry, evidence: Evidence, locate = false) {
+    if (busy) return;
     busy = true;
     error();
-    const evidence = { ...selected },
-      kind = mode,
-      identity = identify(),
-      version = keModel.getVersionId();
-    const request =
-      kind === "var"
-        ? {
-            kind,
-            name: $<HTMLInputElement>("annotation-name").value.trim(),
-            type: entry.name,
-            value: $<HTMLInputElement>("annotation-value").value.trim(),
-          }
-        : {
-            kind,
-            name: entry.name,
-            type: entry.type,
-            params: entry.params.map((p) => p.type),
-          };
+    const identity = identify(),
+      version = keModel.getVersionId(),
+      previous = currentMark?.id;
     try {
+      const request = {
+        kind: entry.kind as Kind,
+        name: entry.name,
+        type: entry.type,
+        params: entry.params.map((p) => p.type),
+      };
       const result = await inspect({ annotation: request });
       if (
         identity !== identify() ||
         version !== keModel.getVersionId() ||
         model.getValue().slice(evidence.start, evidence.end) !== evidence.quote
-      ) {
-        error("内容已变化，请重新选择。");
+      )
         return;
+      if (result.edits.length) {
+        ke.pushUndoStop();
+        ke.executeEdits(
+          "ke-annotation",
+          result.edits.map((edit: any) => ({
+            range: monaco.Range.fromPositions(
+              keModel.getPositionAt(edit.start),
+              keModel.getPositionAt(edit.end),
+            ),
+            text: edit.text,
+          })),
+        );
+        ke.pushUndoStop();
       }
-      applyEdits(result.edits);
-      const mark = {
+      annotations = annotations.filter(
+        (mark) =>
+          mark.id !== previous &&
+          !(mark.start === evidence.start && mark.end === evidence.end),
+      );
+      annotations.push({
         ...request,
         ...evidence,
-        id: crypto.randomUUID(),
+        id: previous || crypto.randomUUID(),
         declaration: result.declaration,
-      };
-      annotations = annotations.filter(
-        (a) =>
-          !(
-            a.start === mark.start &&
-            a.end === mark.end &&
-            a.kind === mark.kind
-          ),
-      );
-      annotations.push(mark);
+        ...(result.draft ? { draft: true } : {}),
+      });
       renderMarks();
       close();
       host.changed();
-      $("annotation-hint").textContent = result.added.length
-        ? "已补充 " + result.added.join("、")
-        : "已关联现有声明";
-      ke.revealPositionInCenterIfOutsideViewport(
-        keModel.getPositionAt(result.position),
-      );
       source.setPosition(model.getPositionAt(evidence.end));
       source.focus();
-    } catch (e) {
-      error(e instanceof Error ? e.message : String(e));
+      if (locate && !result.draft) host.ke.jump(result.position);
+      else if (!result.draft)
+        ke.revealPositionInCenterIfOutsideViewport(
+          keModel.getPositionAt(result.position),
+        );
+    } catch (cause) {
+      if (picker.hidden) host.notify((cause as Error).message, true);
+      else error((cause as Error).message);
     } finally {
       busy = false;
     }
   }
-  // A small drag handle avoids fighting Monaco's ordinary text-selection drag behavior.
-  const handle = $("move-declaration");
-  ke.onDidChangeCursorSelection(({ selection }) => {
-    handle.hidden = selection.isEmpty();
+  $("annotation-change").addEventListener("click", () => {
+    if (currentMark) openSearch({ ...currentMark }, currentMark);
   });
-  handle.addEventListener("dragstart", (event) => {
-    const selected = ke.getSelection();
-    if (!selected || selected.isEmpty()) {
-      event.preventDefault();
-      return;
+  $("annotation-remove").addEventListener("click", () => {
+    annotations = annotations.filter((mark) => mark.id !== currentMark?.id);
+    renderMarks();
+    close();
+    host.changed();
+  });
+  $("annotation-locate").addEventListener("click", () => {
+    if (currentMark) {
+      const entry = resolveMark(currentMark);
+      if (entry) void apply(entry, { ...currentMark }, true);
     }
-    drag = {
-      start: keModel.getOffsetAt(selected.getStartPosition()),
-      end: keModel.getOffsetAt(selected.getEndPosition()),
+  });
+  function openCreate() {
+    form.reset();
+    (form.elements.namedItem("name") as HTMLInputElement).value =
+      search.value.trim();
+    (form.elements.namedItem("label") as HTMLInputElement).value =
+      selected?.quote.slice(0, 80) || "";
+    form.querySelectorAll<HTMLElement>("[data-co-field]").forEach((field) => {
+      field.hidden = field.dataset.coField !== mode;
+    });
+    $("annotation-title").textContent = `新建${titles[mode]}`;
+    const state = host.workspace();
+    const domain = state.question?.draft
+      ? state.domains.find((d) => d.id === state.question?.coScope) ||
+        state.domain
+      : state.domain;
+    $("annotation-create-scope").textContent =
+      `保存到「${domain.name}」${mode === "operator" ? " · 签名可稍后在字典中补齐" : ""}`;
+    show("create");
+    (form.elements.namedItem("name") as HTMLInputElement).focus();
+  }
+  $("annotation-new").addEventListener("click", openCreate);
+  $("annotation-create-back").addEventListener("click", () => {
+    $("annotation-title").textContent = `选择${titles[mode]}`;
+    show("search");
+    search.focus();
+  });
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (busy) return;
+    const value = (name: string) =>
+      (form.elements.namedItem(name) as HTMLInputElement).value.trim();
+    const entry: Entry = {
+      kind: mode,
+      name: value("name"),
+      type: mode === "operator" ? value("returns") : "Concept",
+      params:
+        mode === "operator" && value("params")
+          ? value("params")
+              .split(/[,，]/)
+              .map((type, i) => ({ name: `arg${i + 1}`, type: type.trim() }))
+          : [],
+      ...(value("label") ? { label: value("label") } : {}),
+      ...(mode === "concept" && value("parent")
+        ? { parent: value("parent") }
+        : {}),
     };
-    event.dataTransfer!.setData(dragType, "selection");
-    event.dataTransfer!.effectAllowed = "move";
-  });
-  function clearDrag() {
-    drag = undefined;
-    dragSequence++;
-    dropMark.clear();
-  }
-  handle.addEventListener("dragend", clearDrag);
-  const target = $("editor");
-  async function dropPlan(event: DragEvent) {
-    const offset = keModel.getOffsetAt(
-      ke.getTargetAtClientPoint(event.clientX, event.clientY)?.position ||
-        ke.getPosition()!,
-    );
-    return inspect(
-      drag && "kind" in drag ? { annotation: drag } : { move: drag, offset },
-    );
-  }
-  target.addEventListener("dragover", (event) => {
-    if (!drag || !event.dataTransfer?.types.includes(dragType)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const seq = ++dragSequence,
-      version = keModel.getVersionId();
-    void dropPlan(event)
-      .then((plan) => {
-        if (!drag || seq !== dragSequence || version !== keModel.getVersionId())
-          return;
-        const at = keModel.getPositionAt(plan.position);
-        dropMark.set([
-          {
-            range: new monaco.Range(at.lineNumber, 1, at.lineNumber, 1),
-            options: { isWholeLine: true, className: "declaration-drop-line" },
-          },
-        ]);
+    const evidence = selected && { ...selected },
+      identity = identify(),
+      state = host.workspace();
+    const button = form.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    )!;
+    busy = true;
+    button.disabled = true;
+    error();
+    void api<Workspace>("/api/co", "POST", {
+      domain: state.domain.id,
+      entry,
+      questionId: state.question?.id,
+      draft: state.question?.draft,
+    })
+      .then(async (next) => {
+        if (identity !== identify()) return;
+        host.apply(next);
+        const saved =
+          next.libraries
+            .flatMap((library) => library.entries)
+            .find((co) => co.kind === entry.kind && co.name === entry.name) ||
+          entry;
+        brushes[mode] = entryKey(saved);
+        updateTools();
+        busy = false;
+        if (evidence) await apply(saved, evidence);
+        else {
+          close();
+          source.focus();
+        }
       })
-      .catch(() => dropMark.clear());
-  });
-  target.addEventListener("dragleave", (event) => {
-    if (!target.contains(event.relatedTarget as Node)) dropMark.clear();
-  });
-  target.addEventListener("drop", (event) => {
-    if (!drag) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const version = keModel.getVersionId(),
-      identity = identify();
-    void dropPlan(event)
-      .then((plan) => {
-        if (version !== keModel.getVersionId() || identity !== identify())
-          return;
-        applyEdits(plan.edits);
-        const adjustment = plan.edits
-          .filter((edit: any) => edit.start < plan.position)
-          .reduce(
-            (sum: number, edit: any) =>
-              sum + edit.text.length - (edit.end - edit.start),
-            0,
-          );
-        host.ke.jump(plan.position + adjustment);
-      })
-      .catch((e) => host.notify(e.message, true))
-      .finally(clearDrag);
+      .catch((cause) => error(cause.message))
+      .finally(() => {
+        busy = false;
+        button.disabled = false;
+      });
   });
   return {
     source,
-    snapshot: () => ({ prompt: model.getValue(), annotations: readMarks() }),
+    snapshot: () => ({ prompt: source.getValue(), annotations: readMarks() }),
     load(question?: Question) {
-      loading = true;
       close();
-      clearDrag();
-      try {
-        model.setValue(question?.prompt || "");
-        annotations = (question?.annotations || []).filter(
-          (a) => model.getValue().slice(a.start, a.end) === a.quote,
-        );
-        renderMarks();
-      } finally {
-        loading = false;
-      }
+      drag.clear();
+      loading = true;
+      const text = question?.prompt || "";
+      source.setValue(text);
+      annotations = (question?.annotations || []).filter(
+        (mark) =>
+          ["concept", "operator"].includes(mark.kind) &&
+          text.slice(mark.start, mark.end) === mark.quote,
+      );
+      renderMarks();
+      editing = !text.trim();
+      updateTools();
+      loading = false;
     },
   };
 }

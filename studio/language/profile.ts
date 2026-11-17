@@ -52,6 +52,7 @@ export interface Profile {
   typeMetadata: Record<string, SymbolMetadata & { parent?: string }>;
   compatibility: Record<string, string[]>;
   operators: Record<string, OperatorSignature>;
+  pendingOperators?: Record<string, { params: string[]; returns: string }>;
   values: Record<string, SymbolMetadata & { type: string; constant?: boolean }>;
   origins: Record<string, { uri: string; start: number; end: number }>;
   style: Style;

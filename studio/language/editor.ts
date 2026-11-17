@@ -187,6 +187,20 @@ export async function inspect(
         ...p.surface.Subtype,
         ...p.surface.CallOpen
       ].includes(next.text));
+  // The formatter breaks after statement and clause separators. A completion accepted right
+  // after one starts on a new line instead of being appended to the separator.
+  const lineBreak =
+    '\n' +
+    (source
+      .slice(source.lastIndexOf('\n', replace.start - 1) + 1, replace.end)
+      .match(/^[ \t]*/)?.[0] ?? '');
+  const trailingBreak =
+    declarationEndsHere && !/[\r\n]/.test(source.slice(replace.end, next?.start ?? source.length))
+      ? lineBreak
+      : '';
+  const afterSeparator = a.program.delimiters.some(
+    (d) => ['statement', 'condition'].includes(d.role) && d.end === replace.start
+  );
   const call = callAt({ ...a, symbols }, offset, p);
   const completions: any[] = [];
   const descriptionMatches: any[] = [];
@@ -265,7 +279,8 @@ export async function inspect(
           name,
           kind: 'type',
           detail: returnPosition ? 'CO 返回类型' : 'CO 参数类型',
-          insert: name + (returnPosition && declarationEndsHere ? p.style.statement : ''),
+          insert:
+            name + (returnPosition && declarationEndsHere ? p.style.statement + trailingBreak : ''),
           replace,
           filter: prefix || name,
           sort: order(0, 0, 0, 999999)
@@ -435,7 +450,9 @@ export async function inspect(
           insert += p.style.argument + ' ';
           suggest = true;
         }
-        if (completeDeclaration && declarationEndsHere) insert += p.style.statement;
+        if (completeDeclaration && declarationEndsHere)
+          insert += p.style.statement + trailingBreak;
+        if (afterSeparator) insert = lineBreak + insert;
         if (
           choice.kind === 'concept' &&
           completions.some((item) => item.kind === 'type' && item.name === choice.name)

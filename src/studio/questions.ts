@@ -80,6 +80,7 @@ export class Questions {
       notes: input.notes ?? previous?.notes ?? "",
       annotations: (input.annotations ?? previous?.annotations ?? []).filter(
         (mark) =>
+          ["concept", "operator"].includes(mark.kind) &&
           mark.start >= 0 &&
           mark.end > mark.start &&
           (input.prompt ?? previous?.prompt ?? "").slice(

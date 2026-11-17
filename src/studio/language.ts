@@ -64,11 +64,11 @@ export interface TextAnnotation {
   start: number;
   end: number;
   quote: string;
-  kind: "concept" | "operator" | "var";
+  kind: "concept" | "operator";
   name: string;
   type?: string;
   params?: string[];
-  value?: string;
+  draft?: boolean;
   declaration: string;
 }
 export interface ProposalItem {

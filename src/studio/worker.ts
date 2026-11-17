@@ -211,6 +211,13 @@ async function route(
           );
         else await store.editLibrary(domain, input.edits, input.reason);
         break;
+      case "POST /api/co":
+        return store.createCo(
+          domain,
+          input.entry,
+          input.questionId,
+          !!input.draft,
+        );
       case "PUT /api/model":
         await store.saveModel(
           {

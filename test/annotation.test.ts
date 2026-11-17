@@ -2,6 +2,8 @@ import { beforeAll, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import { createLanguage } from "../studio/language/index";
 import type { Language } from "../src/studio/engine";
+import { applyLibraryEdits } from "../src/studio/store";
+import { entryKey, type Entry } from "../src/studio/language";
 let language: Language, context: ReturnType<Language["context"]>;
 beforeAll(async () => {
   const files = Object.fromEntries(
@@ -80,42 +82,6 @@ it("uses the selected operator overload, includes its concept dependencies and p
   );
   expect(overload.declaration).toBe("op measure(Point) : Real;");
 });
-it("creates a named instance and optional value without duplicating an existing name", () => {
-  const plan = language.annotate(
-    "",
-    { kind: "var", name: "C", type: "Hyperbola" },
-    context,
-  );
-  const text = apply("", plan.edits);
-  expect(text).toContain("C : Hyperbola;");
-  expect(text.indexOf("concept Hyperbola")).toBeLessThan(text.indexOf("C :"));
-  expect(
-    language.annotate(
-      text,
-      { kind: "var", name: "C", type: "Hyperbola" },
-      context,
-    ).edits,
-  ).toEqual([]);
-  expect(() =>
-    language.annotate(text, { kind: "var", name: "C", type: "Point" }, context),
-  ).toThrow("不同声明");
-  const number = language.annotate(
-    "",
-    { kind: "var", name: "r", type: "Real", value: "1.5" },
-    context,
-  );
-  expect(number.declaration).toBe("r : Real = 1.5;");
-  expect(() =>
-    language.annotate("", { kind: "var", name: "C;", type: "Point" }, context),
-  ).toThrow();
-  expect(() =>
-    language.annotate(
-      "",
-      { kind: "var", name: "r", type: "Real", value: "1; x : Real" },
-      context,
-    ),
-  ).toThrow();
-});
 it("snaps a selected declaration to boundaries while preserving parent-before-child and use order", () => {
   const source =
     "concept Curve;\nconcept Point;\nconcept Hyperbola <: Curve;\nop focus(Curve) : set(Point);\noutput = {};";
@@ -152,6 +118,108 @@ it("snaps a selected declaration to boundaries while preserving parent-before-ch
     ),
   ).toThrow();
 });
+it("keeps incomplete CO in the domain header without inventing types or executable declarations", async () => {
+  const entry: Entry = {
+    kind: "operator",
+    name: "track",
+    label: "轨迹",
+    type: "",
+    params: [],
+  };
+  const text = language.renderEntry(entry);
+  const header = language.readHeader(text, "test.keh");
+  expect(header.issues).toEqual([]);
+  expect(header.entries[0]).toMatchObject({ ...entry, draft: true });
+  expect(text).toContain("// @draft ");
+  expect(header.library.operators.track).toBeUndefined();
+  const scope = language.context([{ id: "test", name: "test", text }]);
+  const plan = language.annotate(
+    "output = {};",
+    { kind: "operator", name: "track", params: [] },
+    scope,
+  );
+  expect(plan).toMatchObject({
+    edits: [],
+    draft: true,
+    declaration: "op track() : ",
+  });
+  expect(
+    (await language.inspect("op ", 3, scope)).completions.map((c) => c.name),
+  ).not.toContain("track");
+  expect(language.analyze("output = {};", scope).issues).toEqual([]);
+});
+it("replaces a pending CO with its completed signature and makes it available immediately", async () => {
+  const draft: Entry = {
+    kind: "operator",
+    name: "track",
+    label: "轨迹",
+    type: "",
+    params: [{ name: "value", type: "" }],
+  };
+  let text = "concept Path;\n" + language.renderEntry(draft);
+  text = applyLibraryEdits(
+    text,
+    [
+      {
+        key: entryKey(draft),
+        entry: {
+          ...draft,
+          type: "Path",
+          params: [{ name: "value", type: "Real" }],
+        },
+      },
+    ],
+    language,
+  );
+  const header = language.readHeader(text, "test.keh");
+  expect(header.issues).toEqual([]);
+  expect(header.entries.find((e) => e.name === "track")?.draft).toBeUndefined();
+  expect(text).not.toContain("@draft");
+  expect(text).toContain("op track(value : Real) : Path;");
+  const scope = language.context([{ id: "test", name: "test", text }]);
+  expect(
+    (await language.inspect("op ", 3, scope)).completions.map((c) => c.name),
+  ).toContain("track");
+  const plan = language.annotate(
+    "",
+    { kind: "operator", name: "track", params: ["Real"] },
+    scope,
+  );
+  expect(apply("", plan.edits)).toContain("concept Path;");
+  expect(plan.declaration).toContain("track");
+});
+it("keeps a pending overload separate and supports a complete zero-argument operator", () => {
+  const draft: Entry = {
+    kind: "operator",
+    name: "measure",
+    type: "",
+    params: [],
+  };
+  const text =
+    "concept Shape;\nop measure(Shape) : Real;\n" + language.renderEntry(draft);
+  const scope = language.context([{ id: "test", name: "test", text }]);
+  expect(
+    language.annotate(
+      "",
+      { kind: "operator", name: "measure", params: ["Shape"] },
+      scope,
+    ),
+  ).not.toHaveProperty("draft");
+  expect(
+    language.annotate(
+      "",
+      { kind: "operator", name: "measure", params: [] },
+      scope,
+    ),
+  ).toHaveProperty("draft", true);
+  const completed = language.renderEntry({
+    ...draft,
+    name: "origin",
+    type: "Real",
+  });
+  expect(completed).toBe("op origin() : Real;");
+  expect(language.readHeader(completed, "test.keh").issues).toEqual([]);
+});
 it("shows actionable concise diagnostics with an explicit fix for a trailing separator", async () => {
   const source = "output = {x | x : Real,\n};";
   const result = await language.inspect(source, 0, context, { enabled: false });
@@ -178,4 +246,18 @@ it("spaces colons in generated declarations and fixes an existing tight colon on
   expect(language.format("x:Real; op measure(Point):Real;", context)).toContain(
     "x : Real;",
   );
+});
+it("retains local rules for numeric subtypes without confusing compatibility aliases with inheritance", () => {
+  const text =
+    "concept Real <: Number;\nconcept Length <: Real;\nlength : Length;\noutput = {length + length};";
+  expect(
+    language
+      .analyze(text, context)
+      .issues.filter((i) => !i.code.startsWith("style")),
+  ).toEqual([]);
+  const cycle = language.analyze(
+    "concept First <: Second; concept Second <: First;",
+    context,
+  );
+  expect(cycle.issues.some((i) => i.code === "inheritance-cycle")).toBe(true);
 });

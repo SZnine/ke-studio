@@ -13,7 +13,9 @@ import { Library } from './library';
 import { Issue, Span } from './ast';
 import { CallContract, readContract } from './call-contract';
 import { readAliases } from './symbol-aliases';
+import { isPending, pendingEntry, renderPending } from './pending-co';
 export interface Entry extends SymbolMetadata {
+  draft?: boolean;
   kind: 'concept' | 'object' | 'constant' | 'operator';
   name: string;
   type: string;
@@ -49,6 +51,25 @@ export function readHeader(text: string, uri: string): Header {
     delimiterIndex = 0;
   for (const token of program.tokens)
     if (token.kind === 'comment') {
+      const draft = token.text.match(/^\/\/ @draft (.+)$/);
+      if (draft) {
+        try {
+          const entry = {
+            ...pendingEntry(JSON.parse(draft[1])),
+            span: { start: token.start, end: token.end }
+          };
+          entries.push(entry);
+          (library.pendingOperators ??= {})[
+            `${entry.name}(${entry.params.map((p) => p.type).join(',')})`
+          ] = { params: entry.params.map((p) => p.type), returns: entry.type };
+        } catch (error) {
+          issues.push({
+            ...token,
+            code: 'library',
+            message: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
       const match = token.text.match(/^\/\/ @compatible\s+(\S+)\s+(\S+)\s*$/);
       if (match) (library.compatibility[match[1]] ??= []).push(match[2]);
       const aliases = token.text.match(/^\/\/ @symbolAliases\s+(.+)$/);
@@ -214,6 +235,25 @@ export function readHeader(text: string, uri: string): Header {
     } else
       library.values[d.name] = { type: entry.type, constant: d.kind === 'constant', ...metadata };
   }
+  const keys = new Set(
+    entries.filter((entry) => !entry.draft).map((entry) => entry.kind + ':' + entry.key)
+  );
+  for (const entry of entries.filter((entry) => entry.draft)) {
+    const key =
+      entry.kind +
+      ':' +
+      entry.name +
+      (entry.kind === 'operator' ? '(' + entry.params.map((p) => p.type).join(',') + ')' : '');
+    if (keys.has(key))
+      issues.push({
+        start: entry.span?.start || 0,
+        end: entry.span?.end || 0,
+        code: 'library',
+        message: `重复 CO：${entry.name}`
+      });
+    keys.add(key);
+  }
+  entries.sort((a, b) => (a.span?.start || 0) - (b.span?.start || 0));
   return { library, entries, issues };
 }
 export function renderEntry(e: Entry): string {
@@ -230,6 +270,7 @@ export function renderEntry(e: Entry): string {
   };
   if (!e || !['concept', 'object', 'constant', 'operator'].includes(e.kind) || !id(e.name))
     throw new Error('请输入合法且非保留的名称。');
+  if (isPending(e)) return renderPending(e);
   const typeNode = (s: string) => {
     if (typeof s !== 'string' || s.length > 500) throw new Error('类型过长或无效。');
     const parsed = parse(
@@ -444,6 +485,7 @@ export function combineLibraries(
     typeMetadata: Object.assign(Object.create(null), base.typeMetadata),
     values: Object.assign(Object.create(null), base.values),
     operators: Object.assign(Object.create(null), base.operators),
+    pendingOperators: Object.assign(Object.create(null), base.pendingOperators),
     compatibility: Object.assign(Object.create(null), base.compatibility),
     origins: Object.assign(Object.create(null), base.origins)
   };
@@ -456,6 +498,7 @@ export function combineLibraries(
     Object.assign(library.typeMetadata!, lib.typeMetadata);
     Object.assign(library.values, lib.values);
     Object.assign(library.operators, lib.operators);
+    Object.assign(library.pendingOperators!, lib.pendingOperators);
     Object.assign(library.origins, lib.origins);
     for (const [name, targets] of Object.entries(lib.compatibility))
       library.compatibility[name] = [

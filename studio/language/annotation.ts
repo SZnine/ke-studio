@@ -1,16 +1,13 @@
-import { parse, lex } from './parser';
-import { globalSymbols, signatures, typeName, displayType, type Analysis } from './semantic';
+import { globalSymbols, signatures, typeName, type Analysis } from './semantic';
 import { describeDeclaration } from './editor';
-import { isCompatible } from './types';
 import type { Profile } from './profile';
 import type { Declaration, Span } from './ast';
 
 export interface AnnotationRequest {
-  kind: 'concept' | 'operator' | 'var';
+  kind: 'concept' | 'operator';
   name: string;
   type?: string;
   params?: string[];
-  value?: string;
 }
 export interface TextEdit extends Span {
   text: string;
@@ -25,6 +22,18 @@ function endOfStatement(a: Analysis, source: string, item: Span) {
 
 /** A selected evidence span requests declarations; the current grammar and CO own their spelling. */
 export function annotate(source: string, request: AnnotationRequest, a: Analysis, p: Profile) {
+  if (!['concept', 'operator'].includes(request.kind)) throw new Error('请选择概念或算子工具。');
+  const pending =
+    request.kind === 'operator' &&
+    p.pendingOperators?.[`${request.name}(${(request.params || []).join(',')})`];
+  if (pending)
+    return {
+      edits: [],
+      added: [],
+      position: 0,
+      draft: true,
+      declaration: `${p.operatorAliases[0]} ${request.name}${p.surface.CallOpen[0]}${pending.params.join(p.style.argument + ' ')}${p.surface.CallClose[0]} ${p.surface.Colon[0]} ${pending.returns}`
+    };
   const symbols = globalSymbols(p);
   const declarations = a.program.statements.filter(
     (d): d is Declaration => d.kind !== 'expression'
@@ -84,35 +93,6 @@ export function annotate(source: string, request: AnnotationRequest, a: Analysis
     );
     declaration = `${p.operatorAliases[0]} ${describeDeclaration(selected, p)}${p.style.statement}`;
     if (!existing) append(1, declaration, request.name);
-  } else {
-    const tokens = lex(request.name).tokens.filter((t) => t.kind !== 'eof');
-    if (
-      tokens.length !== 1 ||
-      tokens[0].kind !== 'id' ||
-      tokens[0].text !== request.name ||
-      [...Object.values(p.surface).flat(), ...p.outputNames].includes(request.name)
-    )
-      throw new Error('请输入合法的实例名称。');
-    if (!request.type) throw new Error('请选择实例类型。');
-    includeType(request.type);
-    declaration = `${request.name} ${p.surface.Colon[0]} ${displayType(request.type)}${request.value?.trim() ? ' ' + p.surface.Assign[0] + ' ' + request.value.trim() : ''}${p.style.statement}`;
-    const parsed = parse(declaration, p);
-    if (
-      parsed.issues.length ||
-      parsed.statements.length !== 1 ||
-      parsed.statements[0].kind === 'expression'
-    )
-      throw new Error('实例的名称、类型或值不完整。');
-    existing = declarations.find((d) => d.name === request.name);
-    if (
-      existing &&
-      (existing.kind === 'concept' ||
-        existing.kind === 'operator' ||
-        !existing.type ||
-        !isCompatible(typeName(existing.type), request.type, a.compatibility, false))
-    )
-      throw new Error(`${request.name} 已有不同声明，请修改名称或直接编辑原声明。`);
-    if (!existing) append(2, declaration, request.name);
   }
   if (existing) declaration = source.slice(existing.start, endOfStatement(a, source, existing));
   const edits: TextEdit[] = [];

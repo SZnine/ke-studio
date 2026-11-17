@@ -16,6 +16,7 @@
     "test:local": "node --test test/local-runtime.test.mjs"
   },
   "dependencies": {
+    "@floating-ui/dom": "1.8.0",
     "@noble/hashes": "1.8.0",
     "esbuild-wasm": "0.25.12",
     "eventsource-parser": "3.1.1",

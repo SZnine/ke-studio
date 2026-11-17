@@ -118,7 +118,11 @@ export function createDictionary(host: Host) {
       const heading = node("span", "", "dictionary-entry-heading");
       heading.append(
         node("strong", item.entry.name),
-        node("span", kinds[item.entry.kind], "type-tag " + item.entry.kind),
+        node(
+          "span",
+          item.entry.draft ? "待完善" : kinds[item.entry.kind],
+          "type-tag " + item.entry.kind,
+        ),
       );
       button.append(
         heading,
@@ -154,11 +158,19 @@ export function createDictionary(host: Host) {
     if (entry.label) detail.append(node("p", entry.label, "dictionary-label"));
     const signature =
       entry.kind === "operator"
-        ? `${entry.name}(${entry.params.map((p) => `${p.name}: ${type(p.type)}`).join(", ")}): ${type(entry.type)}`
+        ? `${entry.name}(${entry.params.map((p) => `${p.name} : ${type(p.type) || "未填写"}`).join(", ")}) : ${type(entry.type) || "未填写"}`
         : entry.kind === "concept"
           ? entry.name + (entry.parent ? " <: " + entry.parent : "")
-          : `${entry.name}: ${type(entry.type)}`;
+          : `${entry.name} : ${type(entry.type)}`;
     detail.append(node("pre", signature, "dictionary-signature"));
+    if (entry.draft)
+      detail.append(
+        node(
+          "p",
+          "待完善 CO：输入类型或返回类型尚未补齐，暂不参与代码补全和类型检查。",
+          "muted",
+        ),
+      );
     if (entry.description) detail.append(node("p", entry.description));
     if (entry.params.length || entry.returnDescription) {
       const terms = node("dl");
@@ -186,7 +198,11 @@ export function createDictionary(host: Host) {
     const actions = node("div", "", "dictionary-actions");
     const edit = node(
       "button",
-      item.source === "core" ? "编辑内置定义" : "编辑词条",
+      item.source === "core"
+        ? "编辑内置定义"
+        : entry.draft
+          ? "补齐签名"
+          : "编辑词条",
       "button",
     );
     edit.addEventListener("click", () =>

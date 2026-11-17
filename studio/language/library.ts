@@ -5,6 +5,7 @@ export interface Library {
   typeMetadata?: Profile['typeMetadata'];
   values: Profile['values'];
   operators: Profile['operators'];
+  pendingOperators?: Profile['pendingOperators'];
   compatibility: Profile['compatibility'];
   origins: Profile['origins'];
 }
@@ -22,6 +23,7 @@ export function withLibrary(base: Profile, library: Library): Profile {
     typeMetadata: { ...library.typeMetadata, ...base.typeMetadata },
     values: { ...library.values, ...base.values },
     operators: { ...library.operators, ...base.operators },
+    pendingOperators: { ...library.pendingOperators, ...base.pendingOperators },
     compatibility: { ...library.compatibility, ...base.compatibility },
     origins
   };

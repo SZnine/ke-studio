@@ -12,6 +12,7 @@ import {
   ChatMessage,
   CokeCase,
   Domain,
+  Entry,
   entryKey,
   LibraryEdit,
   Question,
@@ -718,6 +719,24 @@ export class Store {
       this.engine.service,
     );
     return this.saveLibrary(id, text, reason);
+  }
+  async createCo(id: string, entry: Entry, questionId?: string, draft = false) {
+    if (!["concept", "operator"].includes(entry.kind))
+      throw new Error("只能新增概念或算子。");
+    const state = await this.workspace(id, questionId, draft);
+    const entries = [
+      ...state.coreEntries,
+      ...state.libraries.flatMap((library) => library.entries),
+    ];
+    if (entries.some((existing) => existing.name === entry.name))
+      throw new Error("同名 CO 已存在，请直接选择或在字典中编辑。");
+    const target =
+      state.question?.draft &&
+      state.domains.some((d) => d.id === state.question?.coScope)
+        ? state.question.coScope!
+        : id;
+    await this.editLibrary(target, [{ entry }], "从原文工具新建 CO");
+    return this.workspace(id, questionId, draft);
   }
   async saveModel(model: Settings, key?: string) {
     const url = new URL(model.baseUrl);

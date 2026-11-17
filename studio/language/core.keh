@@ -10,40 +10,40 @@ concept Expression;
 // @description 返回数值的绝对值。
 // @returns 非负的绝对值。
 // @param value 输入数值。
-op abs(value: Number) : Number;
+op abs(value : Number) : Number;
 // @description 集合元素数量；集合自动去重。
-op count(items: set(Any)) : Number;
+op count(items : set(Any)) : Number;
 // @description 返回两个值是否相等；不同类型可比较，结果由执行器决定。
-op is_equal(left: Any, right: Any) : Bool;
-op date(year: Number, month: Number, day: Number) : Date;
-op get_year(value: Date) : Number;
-op get_month(value: Date) : Number;
-op get_day(value: Date) : Number;
-op time_interval(start: Date, end: Date) : TimeInterval;
-op time_duration(years: Number, months: Number, days: Number) : TimeDuration;
+op is_equal(left : Any, right : Any) : Bool;
+op date(year : Number, month : Number, day : Number) : Date;
+op get_year(value : Date) : Number;
+op get_month(value : Date) : Number;
+op get_day(value : Date) : Number;
+op time_interval(start : Date, end : Date) : TimeInterval;
+op time_duration(years : Number, months : Number, days : Number) : TimeDuration;
 // @description 原材料缺失的信息。不是可执行的真实值。
 const __未定义 : Any;
 
 // @description 概念对象的名称。
-op name(value: Concept) : String;
+op name(value : Concept) : String;
 // @description 按一元数值算子累加，结果保持该算子的数值类型。
 // @contract {"collection":0,"callback":1,"numeric":true,"result":"callback"}
-op sum(items: set(Any), value: operator) : Number;
+op sum(items : set(Any), value : operator) : Number;
 // @description 按一元数值算子求平均。
 // @contract {"collection":0,"callback":1,"numeric":true,"result":"callback"}
-op avg(items: set(Any), value: operator) : Number;
+op avg(items : set(Any), value : operator) : Number;
 // @contract {"overloads":"closed"}
-op max(items: set(Number)) : Number;
+op max(items : set(Number)) : Number;
 // @description 取数值最大的若干成员，保持输入集合的元素类型。
 // @contract {"collection":0,"callback":1,"numeric":true,"result":"collection"}
-op max(items: set(Any), value: operator, count: Number) : set(Any);
+op max(items : set(Any), value : operator, count : Number) : set(Any);
 // @contract {"overloads":"closed"}
-op min(items: set(Number)) : Number;
+op min(items : set(Number)) : Number;
 // @contract {"collection":0,"callback":1,"numeric":true,"result":"collection"}
-op min(items: set(Any), value: operator, count: Number) : set(Any);
+op min(items : set(Any), value : operator, count : Number) : set(Any);
 // @description 同类型或兼容子类型集合的并集。
 // @contract {"collection":0,"sameCollection":1,"result":"collection"}
-op union(left: set(Any), right: set(Any)) : set(Any);
+op union(left : set(Any), right : set(Any)) : set(Any);
 // @description 构造带单位的量，由接收位置的概念类型确定量的类型。
 // @contract {"result":"context","quantity":true}
-op unit(value: Number, unit: Concept) : Concept;
+op unit(value : Number, unit : Concept) : Concept;
