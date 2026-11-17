@@ -1,0 +1,8 @@
+{
+  "id": "e6e93c64-8b16-5db0-af43-4e53d3cec885",
+  "number": "几何-15",
+  "prompt": "在正方形 $ABCD$ 内部作等边三角形 $ABK$、$BCL$、$CDM$、$DAN$。证明 $KL$、$LM$、$MN$、$NK$ 的中点以及 $AK$、$BK$、$BL$、$CL$、$CM$、$DM$、$DN$、$AN$ 的中点构成一个正十二边形。",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

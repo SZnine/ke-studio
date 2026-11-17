@@ -37,6 +37,7 @@ export interface Profile {
   conceptSets: boolean;
   variableKeyword: string;
   declarationOrder: boolean;
+  declareBuiltIns: boolean;
   assertionValues: boolean;
   missingValues: string[];
   negationKeyword: string;
@@ -105,6 +106,7 @@ export const defaults: Profile = {
   conceptRedeclaration: true,
   conceptSets: true,
   declarationOrder: true,
+  declareBuiltIns: true,
   assertionValues: false,
   conceptRoot: 'Concept',
   numberLiteralType: 'Number',

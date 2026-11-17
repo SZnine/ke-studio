@@ -1,0 +1,8 @@
+{
+  "id": "4dd09b0d-7559-5973-bc71-9accbee0057b",
+  "number": "几何-44",
+  "prompt": "直线 $AB$ 分别与圆 $CAMN$、$NMBD$ 相切。$M$ 在直线 $CD$ 上位于 $C$、$D$ 之间，且 $CD\\parallel AB$。弦 $NA$ 与 $CM$ 交于 $P$，弦 $NB$ 与 $MD$ 交于 $Q$，射线 $CA$ 与 $DB$ 交于 $E$。证明 $PE=QE.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

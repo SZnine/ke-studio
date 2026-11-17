@@ -1,0 +1,8 @@
+{
+  "id": "d9ec0920-981f-580c-93e3-7fbef4b93a7d",
+  "number": "代数-12",
+  "prompt": "设 $x,y,z$ 是非负实数且 $x+y+z=1$。证明 $0\\le yz+zx+xy-2xyz\\le \\frac7{27}.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

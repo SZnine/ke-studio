@@ -1,0 +1,8 @@
+{
+  "id": "db92795d-fb7b-5834-9800-e47309b2f308",
+  "number": "几何-35",
+  "prompt": "三角形 $ABC$ 中 $AB=AC$，$M$ 是 $BC$ 的中点，$O$ 是直线 $AM$ 上一点，且 $OB\\perp AB$。$Q$ 是 $BC$ 上异于 $B$、$C$ 的任意点。$E$、$F$ 分别在直线 $AB$、$AC$ 上，且 $E,Q,F$ 互不相同并共线。证明 $OQ\\perp EF \\iff QE=QF.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

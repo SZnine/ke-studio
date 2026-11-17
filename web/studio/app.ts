@@ -1,5 +1,6 @@
 import "./style.css";
 import { initStorage } from "./storage";
+import "katex/dist/katex.min.css";
 import { createDomains } from "./domains";
 import { createEditor } from "./editor";
 import { createAnnotations } from "./annotations";

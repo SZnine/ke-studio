@@ -1,0 +1,8 @@
+{
+  "id": "f80d20d5-8472-53ce-b59d-ad62f8144342",
+  "number": "几何-37",
+  "prompt": "凸六边形 $ABCDEF$ 满足 $AB=BC=CD,\\qquad DE=EF=FA,\\qquad \\angle BCD=\\angle EFA=60^\\circ.$ 设 $G$、$H$ 是六边形内部的两点，满足 $\\angle AGB=\\angle DHE=120^\\circ$。证明 $AG+GB+GH+DH+HE\\ge CF.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

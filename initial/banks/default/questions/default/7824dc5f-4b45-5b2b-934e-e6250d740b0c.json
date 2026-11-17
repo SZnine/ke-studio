@@ -1,0 +1,8 @@
+{
+  "id": "7824dc5f-4b45-5b2b-934e-e6250d740b0c",
+  "number": "几何-30",
+  "prompt": "三角形 $ABC$ 的内心为 $I$，$\\angle A$、$\\angle B$、$\\angle C$ 的内角平分线分别交对边于 $A'$、$B'$、$C'$。证明 $\\frac14<\\frac{AI\\cdot BI\\cdot CI}{AA'\\cdot BB'\\cdot CC'}\\le \\frac8{27}.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

@@ -11,6 +11,7 @@ export function diagnostics(a: Analysis, p: Profile) {
     const name = message.match(/'([^']+)'/)?.[1];
     const labels: Record<string, string> = {
       undeclared: `尚未声明${name ? ' ' + name : '此名称'}`,
+      'builtin-declaration': `先声明内置 CO${name ? ' ' + name : ''}`,
       'unknown-type': `找不到概念${name ? ' ' + name : ''}`,
       'unknown-operator': `找不到算子${name ? ' ' + name : ''}`,
       'declaration-order': `将${name ? ' ' + name + ' 的' : ''}声明移到使用之前`,

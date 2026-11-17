@@ -1,0 +1,8 @@
+{
+  "id": "6525c694-3ba7-58e6-8a2d-2ac73e31b700",
+  "number": "几何-46",
+  "prompt": "三角形 $ABC$ 是锐角三角形，$O$ 是外心，$X$ 是 $A$ 到 $BC$ 的垂足。已知 $\\angle C\\ge \\angle B+30^\\circ.$ 证明 $\\angle A+\\angle COX<90^\\circ.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

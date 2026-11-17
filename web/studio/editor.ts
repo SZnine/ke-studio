@@ -20,6 +20,7 @@ import "monaco-editor/features/linesOperations/register.js";
 import "monaco-editor/features/codicon/register.js";
 import type { Workspace } from "../../src/studio/language";
 import { api } from "./api";
+import { CompletionSession } from "./completion-session";
 
 (globalThis as any).MonacoEnvironment = {
   getWorker: () =>
@@ -109,6 +110,9 @@ export function createEditor(element: HTMLElement, save: () => void) {
     quickSuggestionsDelay: 0,
     formatOnType: true,
     suggestOnTriggerCharacters: true,
+    acceptSuggestionOnEnter: "off",
+    tabCompletion: "off",
+    acceptSuggestionOnCommitCharacter: false,
     suggest: {
       showWords: false,
       localityBonus: false,
@@ -118,16 +122,41 @@ export function createEditor(element: HTMLElement, save: () => void) {
     "semanticHighlighting.enabled": true,
   });
   const model = editor.getModel()!;
+  const completionSession = new CompletionSession();
+  const dismissCompletions = () => {
+    completionSession.dismiss();
+    manualCompletion = false;
+    editor.trigger("ke", "hideSuggestWidget", {});
+  };
+  editor.onKeyDown((event) => {
+    if ([monaco.KeyCode.Escape, monaco.KeyCode.Enter].includes(event.keyCode))
+      dismissCompletions();
+    else if (
+      !event.ctrlKey &&
+      !event.metaKey &&
+      event.browserEvent.key.length === 1 &&
+      event.browserEvent.key.trim()
+    )
+      completionSession.typed(event.browserEvent.key);
+  });
+  editor.onDidCompositionStart(() => completionSession.resume());
+  editor.addAction({
+    id: "ke.finishCompletion",
+    label: "完成声明",
+    run: dismissCompletions,
+  });
   editor.addAction({
     id: "ke.completeNext",
     label: "继续补全",
     run() {
+      if (completionSession.dismissed) return;
       editor.trigger("ke", "editor.action.triggerParameterHints", {});
       editor.trigger("ke", "editor.action.triggerSuggest", {});
     },
   });
   let manualCompletion = false;
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => {
+    completionSession.resume();
     manualCompletion = true;
     editor.trigger("keyboard", "editor.action.triggerSuggest", {});
   });
@@ -205,6 +234,8 @@ export function createEditor(element: HTMLElement, save: () => void) {
       monaco.languages.registerCompletionItemProvider("ke", {
         triggerCharacters,
         async provideCompletionItems(_, position, _context, token) {
+          if (completionSession.dismissed) return { suggestions: [] };
+          const request = completionSession.revision;
           const version = model.getVersionId(),
             context = state.editorContext;
           const result = await inspect(
@@ -215,7 +246,8 @@ export function createEditor(element: HTMLElement, save: () => void) {
           if (
             token.isCancellationRequested ||
             version !== model.getVersionId() ||
-            context !== state.editorContext
+            context !== state.editorContext ||
+            !completionSession.accepts(request)
           )
             return;
           const kinds: any = {
@@ -242,16 +274,21 @@ export function createEditor(element: HTMLElement, save: () => void) {
                 range: range(edit.start, edit.end),
                 text: edit.text,
               })),
-              command: s.suggest
-                ? { id: "ke.completeNext", title: "继续补全" }
-                : s.kind === "operator" && s.snippet
-                  ? {
-                      id: "editor.action.triggerParameterHints",
-                      title: "参数提示",
-                    }
-                  : s.kind === "keyword" && s.snippet
-                    ? { id: "editor.action.triggerSuggest", title: "类型补全" }
-                    : undefined,
+              command: s.finished
+                ? { id: "ke.finishCompletion", title: "完成声明" }
+                : s.suggest
+                  ? { id: "ke.completeNext", title: "继续补全" }
+                  : s.kind === "operator" && s.snippet
+                    ? {
+                        id: "editor.action.triggerParameterHints",
+                        title: "参数提示",
+                      }
+                    : s.kind === "keyword" && s.snippet
+                      ? {
+                          id: "editor.action.triggerSuggest",
+                          title: "类型补全",
+                        }
+                      : undefined,
             })),
           };
         },
@@ -432,7 +469,10 @@ export function createEditor(element: HTMLElement, save: () => void) {
         });
         register();
       }
-      if (loadDocument) model.setValue(value.question?.ke || "");
+      if (loadDocument) {
+        completionSession.resume();
+        model.setValue(value.question?.ke || "");
+      }
       if (newContext || newLanguage) changed.fire();
     },
     async diagnostics() {

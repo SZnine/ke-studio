@@ -8,6 +8,7 @@ import {
 } from "@floating-ui/dom";
 import { api } from "./api";
 import { declarationDrag } from "./declaration-drag";
+import { updateMarkdown } from "./markdown";
 import { completionSearchRank } from "../../src/completion-search";
 import {
   displayType,
@@ -76,7 +77,8 @@ export function createAnnotations(host: Host) {
     active = 0;
   let loading = false,
     busy = false,
-    editing = false;
+    editing = false,
+    activeTool = false;
   let selected: Evidence | undefined,
     currentMark: TextAnnotation | undefined,
     disposePosition: (() => void) | undefined;
@@ -158,7 +160,7 @@ export function createAnnotations(host: Host) {
             );
           },
         }
-      : $("annotation-brush");
+      : document.querySelector<HTMLElement>(`[data-annotation="${mode}"]`)!;
     const update = () => {
       void computePosition(reference, picker, {
         strategy: "fixed",
@@ -195,21 +197,29 @@ export function createAnnotations(host: Host) {
       .forEach((button) =>
         button.setAttribute(
           "aria-pressed",
-          String(button.dataset.annotation === mode),
+          String(activeTool && button.dataset.annotation === mode),
         ),
       );
     const entry = brush();
+    $("annotation-brush").hidden = !activeTool || !entry;
     $("annotation-brush").dataset.kind = mode;
     $("annotation-brush").firstElementChild!.textContent = entry
       ? entry.label || entry.name
-      : `选择${titles[mode]}`;
-    $("edit-source").textContent = editing ? "完成编辑" : "编辑原文";
+      : "";
+    const raw = editing || activeTool;
+    $("question-prompt").hidden = !raw;
+    $("question-preview").hidden = raw;
+    if (!raw) updateMarkdown($("question-preview"), source.getValue());
+    else source.layout();
+    $("edit-source").textContent = raw ? "预览" : "编辑原文";
     $("edit-source").setAttribute("aria-pressed", String(editing));
-    $("annotation-hint").textContent = editing
-      ? "完成编辑后，划选文字进行标注"
+    $("annotation-hint").textContent = !activeTool
+      ? editing
+        ? "可直接编辑、删除原文"
+        : "Markdown 与公式预览 · C / O 划选标注"
       : entry
         ? `划选即标注 · ${entry.name}${entry.draft ? " · 待完善" : ""}`
-        : "选一次 CO，即可连续划选";
+        : "划选文字后选择 CO · 再次点击工具可取消";
     source.updateOptions({ readOnly: !editing });
   }
   function renderMarks() {
@@ -256,8 +266,9 @@ export function createAnnotations(host: Host) {
   });
   function setMode(kind: Kind) {
     if (busy) return;
+    activeTool = !(activeTool && mode === kind);
     mode = kind;
-    editing = false;
+    editing = !activeTool;
     close();
     updateTools();
     source.focus();
@@ -277,13 +288,27 @@ export function createAnnotations(host: Host) {
     source.addCommand(key, () => setMode(kind), "editorReadonly");
   }
   source.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, host.save);
+  $("question-preview").addEventListener("keydown", (event) => {
+    if (event.ctrlKey || event.metaKey) return;
+    const key = event.key.toLowerCase();
+    if (key === "c" || key === "o") {
+      event.preventDefault();
+      setMode(key === "c" ? "concept" : "operator");
+    }
+  });
   source.addCommand(monaco.KeyCode.Escape, () => {
+    if (picker.hidden && activeTool) {
+      activeTool = false;
+      editing = true;
+      updateTools();
+    }
     close();
     source.setPosition(source.getPosition()!);
   });
   $("edit-source").addEventListener("click", () => {
     if (busy) return;
-    editing = !editing;
+    editing = !(editing || activeTool);
+    activeTool = false;
     close();
     updateTools();
     source.focus();
@@ -332,12 +357,14 @@ export function createAnnotations(host: Host) {
     show("search");
     search.focus();
   }
-  $("annotation-brush").addEventListener("click", () => {
+  $("annotation-clear").addEventListener("click", () => {
     if (busy) return;
-    const evidence = editing ? undefined : capture();
-    editing = false;
+    delete brushes[mode];
+    activeTool = false;
+    editing = true;
+    close();
     updateTools();
-    openSearch(evidence);
+    source.focus();
   });
   function showDetail(mark: TextAnnotation) {
     close();
@@ -375,7 +402,7 @@ export function createAnnotations(host: Host) {
     show("detail");
   }
   source.onMouseUp((event) => {
-    if (editing || busy) return;
+    if (!activeTool || editing || busy) return;
     const evidence = capture();
     if (evidence) {
       const existing = annotations.find(
@@ -675,6 +702,7 @@ export function createAnnotations(host: Host) {
       );
       renderMarks();
       editing = !text.trim();
+      activeTool = false;
       updateTools();
       loading = false;
     },

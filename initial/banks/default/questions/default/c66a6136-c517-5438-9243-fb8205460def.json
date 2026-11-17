@@ -1,0 +1,8 @@
+{
+  "id": "c66a6136-c517-5438-9243-fb8205460def",
+  "number": "几何-33",
+  "prompt": "$D$ 是锐角三角形 $ABC$ 内一点，满足 $\\angle ADB=\\angle ACB+90^\\circ,\\qquad AC\\cdot BD=AD\\cdot BC.$ (a) 求比值 $\\dfrac{AB\\cdot CD}{AC\\cdot BD}$； (b) 证明在 $C$ 处分别与三角形 $ACD$、$BCD$ 的外接圆相切的两条切线互相垂直。",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

@@ -242,9 +242,7 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
       p.conceptRedeclaration &&
       !previous.declaration &&
       // A built-in scalar has no library origin, so it may only be restated bare.
-      (previous.origin
-        ? !scalarTypes.includes(name)
-        : scalarTypes.includes(name) && !d.parent)
+      (previous.origin ? !scalarTypes.includes(name) : scalarTypes.includes(name) && !d.parent)
     ) {
       // Explicit local parents describe this document's ontology. Imported definitions
       // remain unchanged; declarations without a parent retain the imported hierarchy.
@@ -693,6 +691,22 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
       initializing = undefined;
     }
   }
+  if (p.declareBuiltIns)
+    for (const reference of references) {
+      const target = reference.target;
+      if (
+        !reference.declaration &&
+        target &&
+        !target.declaration &&
+        ['concept', 'operator'].includes(target.kind) &&
+        (!target.origin || target.origin.uri === 'language/core.keh')
+      )
+        issue(
+          { start: reference.start, end: reference.end },
+          'builtin-declaration',
+          `Declare built-in '${reference.name}' before use.`
+        );
+    }
   for (const d of issues)
     if (d.fix) {
       const matches = issues.filter(

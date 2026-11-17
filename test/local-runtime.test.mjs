@@ -36,6 +36,9 @@ test("local server serves Pages paths, editor assets and WASM from the build", a
     });
     assert.equal(head.headers.get("content-type"), "application/wasm");
     assert.equal(await head.text(), "");
+    const font = await fetch(base + "/ke-studio/fonts/KaTeX_Main-Regular.woff2");
+    assert.equal(font.status, 200);
+    assert.equal(font.headers.get("content-type"), "font/woff2");
     assert.equal((await fetch(base + "/ke-studio/missing.js")).status, 404);
   } finally {
     await new Promise((resolve) => server.close(resolve));
@@ -71,7 +74,24 @@ test(
       new TextDecoder().decode(archive["dist/initial.json"]),
     );
     assert.ok(
-      Object.keys(template).every((name) => name.startsWith("shared/")),
+      Object.keys(template).every(
+        (name) =>
+          name.startsWith("shared/") ||
+          name.startsWith("banks/default/questions/default/"),
+      ),
+    );
+    const questions = Object.entries(template).filter(([name]) =>
+      name.startsWith("banks/"),
+    );
+    assert.equal(questions.length, 103);
+    assert.ok(
+      questions.every(([, text]) => {
+        const q = JSON.parse(text);
+        return q.ke === "" && q.notes === "";
+      }),
+    );
+    assert.ok(
+      Object.keys(archive).some((name) => /fonts\/KaTeX_.*\.woff2$/.test(name)),
     );
     const temporaryRoot = path.join(projectRoot, ".tmp");
     await fs.mkdir(temporaryRoot, { recursive: true });

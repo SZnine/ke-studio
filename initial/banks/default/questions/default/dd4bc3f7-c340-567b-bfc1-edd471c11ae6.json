@@ -1,0 +1,8 @@
+{
+  "id": "dd4bc3f7-c340-567b-bfc1-edd471c11ae6",
+  "number": "代数-08",
+  "prompt": "设 $x_1\\ge x_2\\ge\\cdots\\ge x_n,\\qquad y_1\\ge y_2\\ge\\cdots\\ge y_n$ 为实数。证明：若 $z_i$ 是 $y_i$ 的任意排列，则 $\\sum_{i=1}^n(x_i-y_i)^2\\le \\sum_{i=1}^n(x_i-z_i)^2.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

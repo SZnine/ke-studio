@@ -1,0 +1,8 @@
+{
+  "id": "c0d38c33-45c3-5531-9345-521be8d99a2d",
+  "number": "圆锥曲线-13",
+  "prompt": "已知两定点A(0,-2), B(0,2)，点P在椭圆\\frac{x^{2}}{12}+\\frac{y^{2}}{16}=1上，且满足|\\overrightarrow{A P}|-|\\overrightarrow{B P}|=2，则\\overrightarrow{A P} \\cdot \\overrightarrow{B P}=?",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

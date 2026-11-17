@@ -1,0 +1,8 @@
+{
+  "id": "e38b4f0b-2327-54f6-8946-22cfb8849648",
+  "number": "几何-38",
+  "prompt": "$P$ 是三角形 $ABC$ 内一点，满足 $\\angle APB-\\angle ACB=\\angle APC-\\angle ABC.$ 设 $D$、$E$ 分别是三角形 $APB$、$APC$ 的内心。证明 $AP$、$BD$、$CE$ 三线共点。",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

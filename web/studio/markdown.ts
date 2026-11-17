@@ -1,6 +1,15 @@
 import MarkdownIt from "markdown-it";
+import { katex } from "@mdit/plugin-katex-slim";
 
 const markdown = new MarkdownIt({ html: false, breaks: true, linkify: true });
+markdown.use(katex, {
+  delimiters: "all",
+  mathFence: true,
+  throwOnError: false,
+  trust: false,
+  strict: "ignore",
+  errorColor: "#e76a61",
+});
 markdown.renderer.rules.link_open = (
   tokens,
   index,

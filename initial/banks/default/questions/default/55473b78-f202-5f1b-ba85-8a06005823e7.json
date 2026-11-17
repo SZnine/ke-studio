@@ -1,0 +1,8 @@
+{
+  "id": "55473b78-f202-5f1b-ba85-8a06005823e7",
+  "number": "代数-04",
+  "prompt": "求区间 $[0,2\\pi]$ 中所有满足 $2\\cos x\\le \\left|\\sqrt{1+\\sin 2x}-\\sqrt{1-\\sin 2x}\\right|\\le \\sqrt2$ 的 $x$。",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

@@ -160,12 +160,7 @@ export class Store {
       drafts: drafts.map(questionSummary),
       proposals: await this.reviews.list(id),
       question,
-      coreEntries: this.engine.active
-        ? this.engine.service.readHeader(
-            this.engine.service.coreText,
-            "core.keh",
-          ).entries
-        : [],
+      coreEntries: this.engine.active ? this.engine.service.coreEntries : [],
       usage,
     };
   }

@@ -20,7 +20,7 @@
 
 声明名称补全读取库中的全局符号：概念位置只列概念，算子位置带出固定签名；新常量和局部绑定名称由用户命名。表达式候选再按作用域、参数类型和检索词筛选。关键字和分隔符从文法获取，空格触发补全；不在客户端保留另一张语法候选表。
 
-语句开头优先关键字，同等检索匹配下领域库优先于内置定义；概念声明不重复提示文件中已声明的概念。名称、中文名、别名和拼音有匹配时不扩展到备注，备注只作为无名称匹配时的回退。完整声明补齐当前 `StatementSeparator` 的规范写法，已有结束符或声明仍有后续结构时不添加。排序、匹配与结束符插入都由语言包维护，客户端消费结果。
+语句开头优先关键字，同等检索匹配下领域库优先于内置定义；概念声明不重复提示文件中已声明的概念。名称、中文名、别名和拼音有匹配时不扩展到备注，备注只作为无名称匹配时的回退。完整声明补齐当前 `StatementSeparator` 并换行；已有结束符会复用，声明仍有后续结构时不提前结束。智能模式的绑定类型补全使用 `ConditionSeparator` 并换行，保留外层 set 括号。排序、匹配与结束符插入都由语言包维护，客户端消费结果。
 
 新的模块必须在本目录并由 `index.ts` 间接或直接导入。第三方组件通过 `../framework.mjs` 桥接；应用主程序不参与每次语言修改。
 
@@ -39,3 +39,5 @@
 实现参考 [VS Code 参数占位](https://code.visualstudio.com/docs/editing/userdefinedsnippets)、[TypeScript Language Server 调用补全](https://github.com/typescript-language-server/typescript-language-server/blob/master/src/completion.ts) 和 [Langium 作用域解析](https://langium.org/docs/learn/workflow/resolve_cross_references/)。候选、分隔符和补全编辑均由本语言包产生，Monaco 只负责展示和应用；调整 CO 签名或文法后无需改界面代码。
 
 原文工具参考 [Label Studio 的文本片段标注](https://labelstud.io/guide/labeling)，使用 [Monaco decorations 和编辑操作](https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor_editor_api.editor.IStandaloneCodeEditor.html) 跟踪位置、显示高亮和悬停说明。原文保持纯文本，关联信息随题目 JSON 保存；修改片段内容导致证据不再匹配时解除该高亮，不删除用户代码。
+
+`declareBuiltIns` 默认开启：代码显式引用内置概念或算子时，必须有本文件声明；库仍提供检索、签名及类型依据。数值和字符串字面量的隐式类型不要求额外声明。C/O 声明生成会补齐内置参数类型；严格检查只作用于 KE，`.keh` 的签名不受此限制。

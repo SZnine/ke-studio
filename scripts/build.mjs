@@ -20,7 +20,7 @@ const results = await Promise.all([
     entryPoints: ["web/studio/app.ts"],
     outfile: "dist/app.js",
     metafile: true,
-    loader: { ".ttf": "file", ".woff": "file" },
+    loader: { ".ttf": "file", ".woff": "file", ".woff2": "file" },
     assetNames: "fonts/[name]",
   }),
   build({
@@ -58,7 +58,7 @@ async function collect(folder, prefix) {
     else template[prefix + file.name] = await fs.readFile(name, "utf8");
   }
 }
-await collect("initial/shared", "shared/");
+await collect("initial", "");
 await collect("studio/language", "shared/language/");
 await fs.writeFile("dist/initial.json", JSON.stringify(template));
 await fs.copyFile(

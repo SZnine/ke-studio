@@ -30,6 +30,24 @@ it("treats model HTML and unsafe links as text instead of executable markup", ()
   expect(html).not.toContain('href="javascript:');
   expect(html).toContain("&lt;img");
 });
+it("renders inline and display formulas while keeping code fences and incomplete input readable", () => {
+  for (const text of [
+    String.raw`题干 $\sqrt{2}$。`,
+    String.raw`题干 \(\frac{x^2}{a^2}\)。`,
+    "$$\nx^2+y^2=1\n$$",
+    String.raw`\[x^2=1\]`,
+  ]) {
+    const html = renderMarkdown(text);
+    expect(html).toContain('class="katex"');
+    expect(html).toContain("<math");
+  }
+  expect(renderMarkdown("```ke\n$x$\n```")).not.toContain('class="katex"');
+  expect(renderMarkdown("还在输入 $x")).toContain("还在输入 $x");
+  expect(renderMarkdown(String.raw`$\frac{$`)).toContain("katex-error");
+  expect(
+    renderMarkdown(String.raw`$\href{javascript:alert(1)}{x}$`),
+  ).not.toContain('href="javascript:');
+});
 
 it("preserves each streamed paragraph across tool rounds and avoids repeating the final answer", () => {
   const first = {

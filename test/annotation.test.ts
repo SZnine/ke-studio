@@ -221,7 +221,7 @@ it("keeps a pending overload separate and supports a complete zero-argument oper
   expect(language.readHeader(completed, "test.keh").issues).toEqual([]);
 });
 it("shows actionable concise diagnostics with an explicit fix for a trailing separator", async () => {
-  const source = "output = {x | x : Real,\n};";
+  const source = "concept Real;\noutput = {x | x : Real,\n};";
   const result = await language.inspect(source, 0, context, { enabled: false });
   const issue = result.issues.find((i) => i.code === "syntax")!;
   expect(issue.message).toBe("最后一项后无需 ,");
@@ -249,7 +249,7 @@ it("spaces colons in generated declarations and fixes an existing tight colon on
 });
 it("retains local rules for numeric subtypes without confusing compatibility aliases with inheritance", () => {
   const text =
-    "concept Real <: Number;\nconcept Length <: Real;\nlength : Length;\noutput = {length + length};";
+    "concept Number;\nconcept Real <: Number;\nconcept Length <: Real;\nlength : Length;\noutput = {length + length};";
   expect(
     language
       .analyze(text, context)
@@ -260,4 +260,43 @@ it("retains local rules for numeric subtypes without confusing compatibility ali
     context,
   );
   expect(cycle.issues.some((i) => i.code === "inheritance-cycle")).toBe(true);
+});
+it("requires explicit built-in declarations and the C/O tools supply their dependencies", async () => {
+  const source = "x : Number; output = {abs(x)};";
+  const issues = language
+    .analyze(source, context)
+    .issues.filter((i) => i.code === "builtin-declaration");
+  expect(issues.map((i) => source.slice(i.start, i.end))).toEqual([
+    "Number",
+    "abs",
+  ]);
+  const plan = language.annotate(
+    source,
+    { kind: "operator", name: "abs", params: ["Number"] },
+    context,
+  );
+  const text = apply(source, plan.edits);
+  expect(text).toContain("concept Number;");
+  expect(text).toContain("op abs(Number) : Number;");
+  expect(language.analyze(text, context).issues).toEqual([]);
+  expect(
+    language.annotate(
+      text,
+      { kind: "operator", name: "abs", params: ["Number"] },
+      context,
+    ).edits,
+  ).toEqual([]);
+  expect(
+    language.analyze(source, { ...context, declareBuiltIns: false }).issues,
+  ).toEqual([]);
+  expect(
+    language.coreEntries.some(
+      (e) => e.name === "Number" && e.kind === "concept",
+    ),
+  ).toBe(true);
+  expect(
+    (await language.inspect("concept Num", 11, context)).completions.some(
+      (c) => c.name === "Number",
+    ),
+  ).toBe(true);
 });

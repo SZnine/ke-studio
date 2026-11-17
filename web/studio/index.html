@@ -238,7 +238,7 @@
                 <button
                   data-annotation="concept"
                   title="概念画笔 · C / Alt+C"
-                  aria-pressed="true"
+                  aria-pressed="false"
                 >
                   <b>C</b> 概念
                 </button>
@@ -250,15 +250,24 @@
                   <b>O</b> 算子
                 </button>
               </div>
-              <button
-                id="annotation-brush"
-                class="annotation-brush"
-                aria-haspopup="dialog"
-              >
-                <span>选择概念</span><span aria-hidden="true">⌄</span>
-              </button>
+              <div id="annotation-brush" class="annotation-brush" hidden>
+                <span></span
+                ><button
+                  id="annotation-clear"
+                  aria-label="清除当前画笔"
+                  title="清除当前 CO"
+                >
+                  ×
+                </button>
+              </div>
             </div>
             <div id="question-prompt" aria-label="题目原文编辑器"></div>
+            <div
+              id="question-preview"
+              class="markdown"
+              tabindex="0"
+              aria-label="题目原文预览"
+            ></div>
             <div class="source-caption" id="annotation-hint">
               选一次 CO，即可连续划选
             </div>

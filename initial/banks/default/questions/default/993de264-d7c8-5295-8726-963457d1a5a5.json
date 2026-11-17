@@ -1,0 +1,8 @@
+{
+  "id": "993de264-d7c8-5295-8726-963457d1a5a5",
+  "number": "几何-39",
+  "prompt": "凸六边形 $ABCDEF$ 满足 $AB\\parallel DE,\\qquad BC\\parallel EF,\\qquad CD\\parallel FA.$ 设 $R_A,R_C,R_E$ 分别是三角形 $FAB$、$BCD$、$DEF$ 的外接圆半径，$p$ 是六边形周长。证明 $R_A+R_C+R_E\\ge \\frac p2.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

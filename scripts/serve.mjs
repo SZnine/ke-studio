@@ -12,6 +12,7 @@ const types = {
   ".wasm": "application/wasm",
   ".json": "application/json",
   ".woff": "font/woff",
+  ".woff2": "font/woff2",
   ".ttf": "font/ttf",
 };
 export function createStaticServer(root = path.join(projectRoot, "dist")) {

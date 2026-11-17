@@ -1,0 +1,8 @@
+{
+  "id": "f53b1629-1ad2-59f6-ba8a-8b81189768b1",
+  "number": "几何-14",
+  "prompt": "在任意三角形 $ABC$ 的各边上向外作三角形 $ABR$、$BCP$、$CAQ$，使得 $\\angle PBC=45^\\circ,\\ \\angle PCB=30^\\circ,\\quad\\angle QAC=45^\\circ,\\ \\angle QCA=30^\\circ,$ $\\angle RAB=15^\\circ,\\ \\angle RBA=15^\\circ.$ 证明 $\\angle QRP=90^\\circ$ 且 $QR=RP$。",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

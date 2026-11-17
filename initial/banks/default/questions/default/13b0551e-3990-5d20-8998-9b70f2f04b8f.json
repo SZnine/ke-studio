@@ -1,0 +1,8 @@
+{
+  "id": "13b0551e-3990-5d20-8998-9b70f2f04b8f",
+  "number": "代数-15",
+  "prompt": "$A,B,C$ 是正实数且 $ABC=1$。证明 $\\left(A-1+\\frac1B\\right)\\left(B-1+\\frac1C\\right)\\left(C-1+\\frac1A\\right)\\le 1.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

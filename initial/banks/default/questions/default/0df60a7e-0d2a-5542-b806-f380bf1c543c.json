@@ -1,0 +1,8 @@
+{
+  "id": "0df60a7e-0d2a-5542-b806-f380bf1c543c",
+  "number": "代数-16",
+  "prompt": "设 $n>2$，实数 $x_1\\le x_2\\le\\cdots\\le x_n$。证明 $\\left(\\sum_{i,j}|x_i-x_j|\\right)^2\\le \\frac23(n^2-1)\\sum_{i,j}(x_i-x_j)^2.$ 并证明等号成立当且仅当该序列是等差数列。",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "411be119-2c3f-5abb-bad4-f7bc41d778c3",
+  "number": "几何-47",
+  "prompt": "三角形 $ABC$ 中，$X$ 在 $BC$ 上且 $AX$ 平分 $\\angle A$；$Y$ 在 $CA$ 上且 $BY$ 平分 $\\angle B$。已知 $\\angle A=60^\\circ,\\qquad AB+BX=AY+YB.$ 求 $\\angle B$ 的所有可能值。",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

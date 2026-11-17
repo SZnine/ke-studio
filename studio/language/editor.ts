@@ -5,7 +5,7 @@ import { syntaxServices } from './parser';
 import { completionSearchRank } from './completion-search';
 import { isCompatible } from './types';
 import type { Token } from './ast';
-import { pendingBindings, clauseContinuation } from './completion-edits';
+import { pendingBindings, clauseContinuation, finishCompletion } from './completion-edits';
 import { diagnostics } from './diagnostics';
 
 export const tokenTypes = [
@@ -178,29 +178,6 @@ export async function inspect(
   const next = a.program.tokens.find(
     (t) => t.start >= replace.end && !['comment', 'eof'].includes(t.kind)
   );
-  const declarationEndsHere =
-    !next ||
-    (/[\r\n]/.test(source.slice(replace.end, next.start)) &&
-      ![
-        ...p.surface.StatementSeparator,
-        ...p.surface.Colon,
-        ...p.surface.Subtype,
-        ...p.surface.CallOpen
-      ].includes(next.text));
-  // The formatter breaks after statement and clause separators. A completion accepted right
-  // after one starts on a new line instead of being appended to the separator.
-  const lineBreak =
-    '\n' +
-    (source
-      .slice(source.lastIndexOf('\n', replace.start - 1) + 1, replace.end)
-      .match(/^[ \t]*/)?.[0] ?? '');
-  const trailingBreak =
-    declarationEndsHere && !/[\r\n]/.test(source.slice(replace.end, next?.start ?? source.length))
-      ? lineBreak
-      : '';
-  const afterSeparator = a.program.delimiters.some(
-    (d) => ['statement', 'condition'].includes(d.role) && d.end === replace.start
-  );
   const call = callAt({ ...a, symbols }, offset, p);
   const completions: any[] = [];
   const descriptionMatches: any[] = [];
@@ -279,8 +256,8 @@ export async function inspect(
           name,
           kind: 'type',
           detail: returnPosition ? 'CO 返回类型' : 'CO 参数类型',
-          insert:
-            name + (returnPosition && declarationEndsHere ? p.style.statement + trailingBreak : ''),
+          insert: name,
+          completeReturn: returnPosition,
           replace,
           filter: prefix || name,
           sort: order(0, 0, 0, 999999)
@@ -338,8 +315,7 @@ export async function inspect(
       if (!nameSlots.length && !declarationName && !inType) continue;
       if (nameSlots.includes('LocalBinding')) continue;
       if (declarationName === 'ConstantDeclaration') continue;
-      if (declarationName === 'ConceptDeclaration' && (symbol.kind !== 'concept' || !symbol.origin))
-        continue;
+      if (declarationName === 'ConceptDeclaration' && symbol.kind !== 'concept') continue;
       if (
         declarationName === 'ConceptDeclaration' &&
         a.program.statements.some(
@@ -450,9 +426,6 @@ export async function inspect(
           insert += p.style.argument + ' ';
           suggest = true;
         }
-        if (completeDeclaration && declarationEndsHere)
-          insert += p.style.statement + trailingBreak;
-        if (afterSeparator) insert = lineBreak + insert;
         if (
           choice.kind === 'concept' &&
           completions.some((item) => item.kind === 'type' && item.name === choice.name)
@@ -473,6 +446,7 @@ export async function inspect(
           kind:
             choice.kind === 'concept' ? 'type' : choice.kind === 'operator' ? 'operator' : 'value',
           insert,
+          completeDeclaration,
           snippet,
           suggest,
           replace,
@@ -547,13 +521,19 @@ export async function inspect(
             sort: order(0)
           });
     if (!completions.length) completions.push(...descriptionMatches);
+    for (const item of completions)
+      if (smart || item.completeDeclaration || item.completeReturn)
+        finishCompletion(source, item, a, p);
     if (
       p.surface.Colon.includes(previous?.text || '') &&
       previous!.start > 0 &&
       !/\s/.test(source[previous!.start - 1])
     )
       for (const item of completions)
-        item.edits = [{ start: previous!.start, end: previous!.start, text: ' ' }];
+        item.edits = [
+          ...(item.edits || []),
+          { start: previous!.start, end: previous!.start, text: ' ' }
+        ];
     completions.sort((a, b) => a.sort.localeCompare(b.sort) || a.name.localeCompare(b.name));
   }
   const keywords = new Set(

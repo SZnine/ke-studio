@@ -1,0 +1,8 @@
+{
+  "id": "fbe265dc-3335-5ca4-99a5-72dabea5ecc7",
+  "number": "几何-28",
+  "prompt": "凸四边形 $ABCD$ 的边满足 $AB=AD+BC$。四边形内部存在一点 $P$，它到直线 $CD$ 的距离为 $h$，且 $AP=h+AD,\\qquad BP=h+BC.$ 证明 $\\frac1{\\sqrt h}\\ge \\frac1{\\sqrt{AD}}+\\frac1{\\sqrt{BC}}.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

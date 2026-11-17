@@ -36,6 +36,19 @@ async function complete(text: string, manual = false) {
 async function smart(text: string) {
   return (await inspect(text, { callStyle: "smart" })).completions;
 }
+function applyCompletion(input: string, choice: any) {
+  let source = input.replace("§", "");
+  expect(source.slice(choice.replace.start, choice.replace.end)).not.toMatch(
+    /[\r\n]/,
+  );
+  const edits = [
+    ...(choice.edits || []),
+    { ...choice.replace, text: choice.insert.replace("$0", "") },
+  ].sort((a, b) => b.start - a.start);
+  for (const edit of edits)
+    source = source.slice(0, edit.start) + edit.text + source.slice(edit.end);
+  return source;
+}
 const declarations = `concept Point; concept Angle;
 op midpoint(Point, Point): Point;
 op length(Point, Point): Real;
@@ -154,7 +167,7 @@ output = { (x1,x2,x3) | x1: set(Real), x2: set(Real), `;
     const range = await smart("op midpoint(Point, Point): §");
     expect(range[0].insert).toBe("Point;\n");
     expect((await smart("op midpoint(Point, Point): Po§;"))[0].insert).toBe(
-      "Point",
+      "Point;\n",
     );
     const parameter = (await smart("op midpoint(§): Point;"))[0];
     expect(parameter.name).toBe("Point");
@@ -239,5 +252,45 @@ output = { (x1,x2,x3) | x1: set(Real), x2: set(Real), `;
         })
       ).continuationEdits,
     ).toEqual([]);
+  });
+  it("finishes binding type completions with one comma and a new line, preserving set brackets", async () => {
+    for (const type of ["Re§", "set(Re§)", "set(set(Re§))"]) {
+      const input = "output = {pt |\n  pt : " + type + "\n};";
+      const choice = (await smart(input)).find((c) => c.name === "Real");
+      expect(choice?.finished, type).toBe(true);
+      expect(choice?.insert, type).toContain(",\n  $0\n");
+      const text = applyCompletion(input, choice);
+      expect(text).toContain(
+        "pt : " + type.replace("Re§", "Real") + ",\n  \n};",
+      );
+      expect(choice.suggest).toBe(false);
+    }
+    const input = "output = {pt |\n  pt : Re§,\n  other : Real\n};";
+    const choice = (await smart(input)).find((c) => c.name === "Real");
+    const text = applyCompletion(input, choice);
+    expect(text).toBe("output = {pt |\n  pt : Real,\n  other : Real\n};");
+    const tight = "output = {pt |\r\n  pt: Re§\r\n};";
+    const tightChoice = (await smart(tight)).find((c) => c.name === "Real");
+    expect(applyCompletion(tight, tightChoice)).toBe(
+      "output = {pt |\r\n  pt : Real,\n  \n};",
+    );
+  });
+  it("moves past a declaration's existing semicolon and does not finish an operator parameter", async () => {
+    for (const input of [
+      "concept Num§;",
+      "concept Num§;\nconcept Real;",
+      "op mid§;",
+    ]) {
+      const name = input.startsWith("op") ? "midpoint" : "Number";
+      const choice = (await smart(input)).find((c) => c.name === name);
+      expect(choice?.finished, input).toBe(true);
+      expect(choice?.insert, input).toMatch(/;\n$/);
+      const text = applyCompletion(input, choice);
+      expect(text).not.toContain(";;");
+      expect(text).not.toContain("\n\n");
+    }
+    expect(
+      (await smart("op midpoint(Po§, Point) : Point;"))[0].finished,
+    ).toBeUndefined();
   });
 });

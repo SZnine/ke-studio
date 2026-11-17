@@ -1,0 +1,8 @@
+{
+  "id": "817bbd79-2706-5ca8-89b2-50eefdbb77cb",
+  "number": "几何-01",
+  "prompt": "已知线段 $AC$ 的长度，求作三角形 $ABC$，使 $\\angle ABC=90^\\circ$，且中线 $BM$ 满足 $BM^2=AB\\cdot BC$。",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

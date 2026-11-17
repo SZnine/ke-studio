@@ -1,0 +1,8 @@
+{
+  "id": "4a69e87f-9d79-5d55-9ab7-0961fb28d49e",
+  "number": "几何-13",
+  "prompt": "证明：在三角形 $ABC$ 的边 $AB$ 上存在点 $D$，使 $CD$ 是 $AD$ 与 $DB$ 的等比中项，当且仅当 $\\sin A\\sin B\\le \\sin^2\\frac C2.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

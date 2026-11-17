@@ -53,7 +53,7 @@ export function annotate(source: string, request: AnnotationRequest, a: Analysis
     if (symbol?.kind !== 'concept') throw new Error(`概念 ${name} 不在当前 CO 范围内。`);
     const parent = existing?.parent?.name || p.typeMetadata[name]?.parent;
     if (parent) concept(parent);
-    if (existing || !symbol.origin || name === p.conceptRoot) return;
+    if (existing) return;
     append(
       0,
       `${p.keywords.concept} ${name}${parent ? ' ' + p.surface.Subtype[0] + ' ' + parent : ''}${p.style.statement}`,

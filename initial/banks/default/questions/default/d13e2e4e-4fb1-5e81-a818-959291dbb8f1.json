@@ -1,0 +1,8 @@
+{
+  "id": "d13e2e4e-4fb1-5e81-a818-959291dbb8f1",
+  "number": "代数-14",
+  "prompt": "设 $a,b,c$ 是正实数且 $abc=1$。证明 $\\frac1{a^3(b+c)}+\\frac1{b^3(c+a)}+\\frac1{c^3(a+b)}\\ge \\frac32.$",
+  "ke": "",
+  "notes": "",
+  "updated": "2026-11-17T00:00:00.000Z"
+}

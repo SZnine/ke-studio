@@ -7,7 +7,7 @@ import {
 import { initializeSyntax, parse } from './parser';
 import { analyzeProgram } from './semantic';
 import { defaults, profile } from './profile';
-import { combineLibraries, emptyLibrary, readHeader, renderEntry } from './ontology';
+import { combineLibraries, emptyLibrary, readHeader, renderEntry, type Entry } from './ontology';
 import { withLibrary } from './library';
 import { inspect, format, tokenTypes } from './editor';
 import { annotate, moveDeclaration, type AnnotationRequest } from './annotation';
@@ -91,6 +91,12 @@ export async function createLanguage(files: Record<string, string>, previousCore
   }
   return {
     coreText,
+    coreEntries: [
+      ...profile().builtInTypes.map(
+        (name) => ({ kind: 'concept', name, type: name, params: [] }) as Entry
+      ),
+      ...core.entries
+    ],
     manifest: JSON.parse(files['manifest.json']),
     guide: Object.fromEntries(
       Object.entries(defaults).filter(
