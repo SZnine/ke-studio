@@ -1,14 +1,14 @@
 // @label 点
 // @aliases ["点"]
-// @description 平面上的几何点，作为圆锥曲线的焦点、顶点等位置对象。
+// @description 平面上的点，可带横纵坐标。
 // @updated 2026-11-16
-concept Point <: Concept;
+concept Point;
 
 // @label 直线
 // @aliases ["直线"]
-// @description 平面上的直线，可作为圆锥曲线的准线或对称轴。
+// @description 直线，由两点确定，也可由方程表示。
 // @updated 2026-11-16
-concept Line <: Concept;
+concept Line <: LinearObject;
 
 // @label 平面曲线
 // @aliases ["曲线"]
@@ -17,10 +17,10 @@ concept Line <: Concept;
 concept PlaneCurve <: Concept;
 
 // @label 圆锥曲线
-// @aliases ["二次曲线"]
-// @description 由平面截圆锥面得到的曲线，包含椭圆、抛物线和双曲线。
+// @aliases ["圆锥曲线","二次曲线"]
+// @description 圆、椭圆、抛物线、双曲线的统称。
 // @updated 2026-11-16
-concept ConicSection <: PlaneCurve;
+concept ConicSection <: Curve;
 
 // @label 离心率
 // @aliases ["e"]
@@ -36,21 +36,21 @@ concept ConicParameters <: Concept;
 
 // @label 椭圆
 // @aliases ["椭圆"]
-// @description 到两焦点距离之和为常数的平面点的集合，离心率小于 1。
+// @description 椭圆，标准方程形如 x^2/a^2+y^2/b^2 EQ 1 的曲线。
 // @updated 2026-11-16
-concept Ellipse <: ConicSection;
+concept Ellipse <: CentralConic;
 
 // @label 抛物线
 // @aliases ["抛物线"]
-// @description 到焦点与到准线距离相等的平面点的集合，离心率等于 1。
+// @description 抛物线，标准方程形如 y^2 EQ 2 p x 的曲线。
 // @updated 2026-11-16
 concept Parabola <: ConicSection;
 
 // @label 双曲线
 // @aliases ["双曲线"]
-// @description 到两焦点距离之差的绝对值为常数的平面点的集合，离心率大于 1。
+// @description 双曲线，标准方程形如 x^2/a^2-y^2/b^2 EQ 1 的曲线。
 // @updated 2026-11-16
-concept Hyperbola <: ConicSection;
+concept Hyperbola <: CentralConic;
 
 // @label 构造点
 // @description 由横纵坐标构造平面点。
@@ -58,21 +58,23 @@ concept Hyperbola <: ConicSection;
 // @updated 2026-11-16
 // @param x 横坐标。
 // @param y 纵坐标。
-op point(x: Number, y: Number) : Point;
+op point(x : Number, y : Number) : Point;
 
 // @label 横坐标
-// @description 平面点的横坐标。
-// @returns 点的 x 坐标。
+// @aliases ["横坐标"]
+// @description 点的横坐标。
+// @returns 点的 x 坐标数值。
 // @updated 2026-11-16
-// @param value 平面点。
-op x_coordinate(value: Point) : Number;
+// @param p 点。
+op x_coordinate(p : Point) : Number;
 
 // @label 纵坐标
-// @description 平面点的纵坐标。
-// @returns 点的 y 坐标。
+// @aliases ["纵坐标"]
+// @description 点的纵坐标。
+// @returns 点的 y 坐标数值。
 // @updated 2026-11-16
-// @param value 平面点。
-op y_coordinate(value: Point) : Number;
+// @param p 点。
+op y_coordinate(p : Point) : Number;
 
 // @label 两点距离
 // @description 平面上两点之间的欧氏距离。
@@ -80,7 +82,7 @@ op y_coordinate(value: Point) : Number;
 // @updated 2026-11-16
 // @param left 第一个点。
 // @param right 第二个点。
-op distance(left: Point, right: Point) : Number;
+op distance(left : Point, right : Point) : Number;
 
 // @label 构造椭圆
 // @description 由中心与半长轴、半短轴构造椭圆。
@@ -89,7 +91,7 @@ op distance(left: Point, right: Point) : Number;
 // @param center 椭圆中心。
 // @param semi_major_axis 半长轴长 a。
 // @param semi_minor_axis 半短轴长 b。
-op ellipse(center: Point, semi_major_axis: Number, semi_minor_axis: Number) : Ellipse;
+op ellipse(center : Point, semi_major_axis : Number, semi_minor_axis : Number) : Ellipse;
 
 // @label 构造抛物线
 // @description 由顶点与焦准距构造抛物线。
@@ -97,7 +99,7 @@ op ellipse(center: Point, semi_major_axis: Number, semi_minor_axis: Number) : El
 // @updated 2026-11-16
 // @param vertex 抛物线顶点。
 // @param focal_length 焦点到顶点的焦准距 p。
-op parabola(vertex: Point, focal_length: Number) : Parabola;
+op parabola(vertex : Point, focal_length : Number) : Parabola;
 
 // @label 构造双曲线
 // @description 由中心与半实轴、半虚轴构造双曲线。
@@ -106,35 +108,36 @@ op parabola(vertex: Point, focal_length: Number) : Parabola;
 // @param center 双曲线中心。
 // @param semi_major_axis 半实轴长 a。
 // @param semi_minor_axis 半虚轴长 b。
-op hyperbola(center: Point, semi_major_axis: Number, semi_minor_axis: Number) : Hyperbola;
+op hyperbola(center : Point, semi_major_axis : Number, semi_minor_axis : Number) : Hyperbola;
 
 // @label 半长轴
 // @description 椭圆或双曲线的半长轴（半实轴）长 a。
 // @returns 半长轴长。
 // @updated 2026-11-16
 // @param value 圆锥曲线。
-op semi_major_axis(value: ConicSection) : Number;
+op semi_major_axis(value : ConicSection) : Number;
 
 // @label 半短轴
 // @description 椭圆或双曲线的半短轴（半虚轴）长 b。
 // @returns 半短轴长。
 // @updated 2026-11-16
 // @param value 圆锥曲线。
-op semi_minor_axis(value: ConicSection) : Number;
+op semi_minor_axis(value : ConicSection) : Number;
 
 // @label 焦距
 // @description 两焦点之间的距离 2c。
 // @returns 焦距 2c。
 // @updated 2026-11-16
 // @param value 圆锥曲线。
-op focal_distance(value: ConicSection) : Number;
+op focal_distance(value : ConicSection) : Number;
 
 // @label 离心率
-// @description 圆锥曲线的离心率 e = c / a。
-// @returns 离心率。
+// @aliases ["离心率"]
+// @description 圆锥曲线的离心率。
+// @returns 离心率数值。
 // @updated 2026-11-16
-// @param value 圆锥曲线。
-op eccentricity(value: ConicSection) : Eccentricity;
+// @param c 待求离心率的圆锥曲线。
+op eccentricity(c : ConicSection) : Number;
 
 // @label 由焦点准线定圆锥曲线
 // @description 按统一定义：到焦点距离与到准线距离之比为 e 的点集，e 小于 1 为椭圆、等于 1 为抛物线、大于 1 为双曲线。
@@ -143,32 +146,904 @@ op eccentricity(value: ConicSection) : Eccentricity;
 // @param focus 焦点。
 // @param directrix 准线。
 // @param value 离心率 e。
-op conic_from_focus_directrix(focus: Point, directrix: Line, value: Eccentricity) : ConicSection;
+op conic_from_focus_directrix(focus : Point, directrix : Line, value : Eccentricity) : ConicSection;
 
 // @label 焦点
-// @description 圆锥曲线的焦点集合：椭圆与双曲线有两个焦点，抛物线有一个。
-// @returns 焦点集合。
+// @aliases ["焦点"]
+// @description 圆锥曲线的焦点集合。
+// @returns 全部焦点。
 // @updated 2026-11-16
-// @param value 圆锥曲线。
-op focus(value: ConicSection) : set(Point);
+// @param c 圆锥曲线。
+op focus(c : ConicSection) : set(Point);
 
 // @label 顶点
-// @description 圆锥曲线在对称轴上的顶点集合。
-// @returns 顶点集合。
+// @aliases ["顶点"]
+// @description 圆锥曲线的顶点集合。
+// @returns 全部顶点。
 // @updated 2026-11-16
-// @param value 圆锥曲线。
-op vertex(value: ConicSection) : set(Point);
+// @param c 圆锥曲线。
+op vertex(c : ConicSection) : set(Point);
 
 // @label 对称轴
 // @description 圆锥曲线的对称轴集合。
 // @returns 对称轴集合。
 // @updated 2026-11-16
 // @param value 圆锥曲线。
-op axis_of_symmetry(value: ConicSection) : set(Line);
+op axis_of_symmetry(value : ConicSection) : set(Line);
 
 // @label 准线
-// @description 圆锥曲线对应的准线集合。
-// @returns 准线集合。
+// @aliases ["准线"]
+// @description 圆锥曲线的准线集合。
+// @returns 全部准线。
 // @updated 2026-11-16
-// @param value 圆锥曲线。
-op directrix(value: ConicSection) : set(Line);
+// @param c 圆锥曲线。
+op directrix(c : ConicSection) : set(Line);
+
+// @label 曲线
+// @aliases ["曲线"]
+// @description 平面曲线；圆、直线、双曲线等几何对象的共同父概念。
+// @updated 2026-11-16
+concept Curve;
+
+// @label 角
+// @aliases ["角","角度"]
+// @description 角的大小；可由三点确定，也可由带单位的数值给出。
+// @updated 2026-11-16
+concept Angle;
+
+// @label 圆
+// @aliases ["圆"]
+// @description 圆，可在坐标系中用 x^2+y^2 EQ r^2 表示。
+// @updated 2026-11-16
+concept Circle <: CentralConic;
+
+// @label 交点
+// @aliases ["交点","交"]
+// @description 两条曲线的交点集合。
+// @returns 两曲线的全部交点。
+// @updated 2026-11-16
+// @param left 第一条曲线。
+// @param right 第二条曲线。
+op intersection(left : Curve, right : Curve) : set(Point);
+
+// @label 是否相切
+// @aliases ["相切"]
+// @description 判断两条曲线是否相切，例如过定点的直线与圆相切。
+// @returns 相切的断言。
+// @updated 2026-11-16
+// @param a 第一条曲线（可为直线）。
+// @param b 第二条曲线。
+op is_tangent(a : Curve, b : Curve) : Assertion;
+
+// @label 角
+// @aliases ["角","夹角"]
+// @description 以第二点为顶点，由三点确定的角的大小。
+// @returns 角的大小，数值。
+// @updated 2026-11-16
+// @param p1 角的一边上的点。
+// @param p2 角的顶点。
+// @param p3 角的另一边上的点。
+op angle_of(p1 : Point, p2 : Point, p3 : Point) : Number;
+
+// @label 线性对象
+// @aliases ["线性对象"]
+// @description 直线、线段、射线等线性几何对象。
+// @updated 2026-11-16
+concept LinearObject <: Curve;
+
+// @label 线段
+// @aliases ["线段"]
+// @description 由两个端点确定的线段。
+// @updated 2026-11-16
+concept LineSegment <: LinearObject;
+
+// @label 射线
+// @aliases ["射线"]
+// @description 由一个端点出发的射线。
+// @updated 2026-11-16
+concept Ray <: LinearObject;
+
+// @label 中心圆锥曲线
+// @aliases ["中心圆锥曲线"]
+// @description 有中心的圆锥曲线：椭圆、圆与双曲线。
+// @updated 2026-11-16
+concept CentralConic <: ConicSection;
+
+// @label 原点
+// @aliases ["原点"]
+// @description 坐标原点。
+// @updated 2026-11-16
+concept Origin <: Point;
+
+// @label 轴
+// @aliases ["轴","坐标轴","对称轴"]
+// @description 坐标轴或曲线的对称轴，是特殊的直线。
+// @updated 2026-11-16
+concept Axis <: Line;
+
+// @label x轴
+// @aliases ["x轴","横轴"]
+// @description 平面直角坐标系的 x 轴。
+// @updated 2026-11-16
+concept XAxis <: Axis;
+
+// @label y轴
+// @aliases ["y轴","纵轴"]
+// @description 平面直角坐标系的 y 轴。
+// @updated 2026-11-16
+concept YAxis <: Axis;
+
+// @label 向量
+// @aliases ["向量"]
+// @description 平面向量，可用于数量积和向量模。
+// @updated 2026-11-16
+concept Vector;
+
+// @label 圆周率
+// @aliases ["圆周率","π"]
+// @description 圆周率 π 的符号。
+// @updated 2026-11-16
+concept Pi;
+
+// @label 正负号
+// @aliases ["正负号","±"]
+// @description 正负号 ± 的符号。
+// @updated 2026-11-16
+concept Pm;
+
+// @label 断言
+// @aliases ["断言","命题"]
+// @description 判断命题真假得到的结果，由断言类算子返回。
+// @updated 2026-11-16
+concept Assertion;
+
+// @label 封闭图形
+// @aliases ["封闭图形"]
+// @description 三角形等封闭图形，可求周长和面积。
+// @updated 2026-11-16
+concept ClosedFigure;
+
+// @label 三角形
+// @aliases ["三角形"]
+// @description 由三点确定的三角形。
+// @updated 2026-11-16
+concept Triangle <: ClosedFigure;
+
+// @label 区间
+// @aliases ["区间"]
+// @description 数值区间，可由 interval 或 range 得到。
+// @updated 2026-11-16
+concept Interval;
+
+// @label 坐标
+// @aliases ["坐标"]
+// @description 点的坐标，可由 coordinate 或 locate 得到。
+// @updated 2026-11-16
+concept Coordinate;
+
+// @label 集合
+// @aliases ["集合"]
+// @description 同类元素构成的集合。
+// @updated 2026-11-16
+concept Set;
+
+// @label 常量
+// @aliases ["常量"]
+// @description 取值不变的量。
+// @updated 2026-11-16
+concept Const;
+
+// @label 位置
+// @aliases ["位置","方位"]
+// @description 方位描述，用于取曲线上的某个焦点、顶点或准线。
+// @updated 2026-11-16
+concept Location;
+
+// @label 左
+// @aliases ["左"]
+// @description 左侧方位。
+// @updated 2026-11-16
+concept Left <: Location;
+
+// @label 右
+// @aliases ["右"]
+// @description 右侧方位。
+// @updated 2026-11-16
+concept Right <: Location;
+
+// @label 上
+// @aliases ["上"]
+// @description 上方方位。
+// @updated 2026-11-16
+concept Upper <: Location;
+
+// @label 下
+// @aliases ["下"]
+// @description 下方方位。
+// @updated 2026-11-16
+concept Lower <: Location;
+
+// @label 常用对数
+// @aliases ["常用对数"]
+// @description 以 10 为底的对数。
+// @returns 对数值。
+// @updated 2026-11-16
+// @param n 真数。
+op lg(n : Number) : Number;
+
+// @label 倒数
+// @aliases ["倒数"]
+// @description 数值的倒数。
+// @returns 倒数数值。
+// @updated 2026-11-16
+// @param n 非零数值。
+op inter_reciprocal(n : Number) : Number;
+
+// @label 平方根
+// @aliases ["平方根","开方"]
+// @description 算术平方根。
+// @returns 平方根数值。
+// @updated 2026-11-16
+// @param n 非负数值。
+op sqrt(n : Number) : Number;
+
+// @label 点在线段上
+// @aliases ["介于"]
+// @description 第二个点是否位于第一、第三点之间。
+// @returns 介于其间的断言。
+// @updated 2026-11-16
+// @param p1 线段的第一个端点。
+// @param p2 判断是否在中间的点。
+// @param p3 线段的第二个端点。
+op between(p1 : Point, p2 : Point, p3 : Point) : Assertion;
+
+// @label 是否为直径
+// @aliases ["是直径"]
+// @description 线段是否为圆的直径。
+// @returns 是直径的断言。
+// @updated 2026-11-16
+// @param l 线段。
+// @param c 圆。
+op is_diameter(l : LineSegment, c : Circle) : Assertion;
+
+// @label 是否为弦
+// @aliases ["是弦"]
+// @description 线段是否为圆锥曲线的弦。
+// @returns 是弦的断言。
+// @updated 2026-11-16
+// @param l 线段。
+// @param c 圆锥曲线。
+op is_chord_of(l : LineSegment, c : ConicSection) : Assertion;
+
+// @label 是否为内切圆
+// @aliases ["是内切圆"]
+// @description 圆是否为三角形的内切圆。
+// @returns 是内切圆的断言。
+// @updated 2026-11-16
+// @param c 圆。
+// @param t 三角形。
+op is_inscribed_circle(c : Circle, t : Triangle) : Assertion;
+
+// @label 是否为外接圆
+// @aliases ["是外接圆"]
+// @description 圆是否为三角形的外接圆。
+// @returns 是外接圆的断言。
+// @updated 2026-11-16
+// @param c 圆。
+// @param t 三角形。
+op is_circum_circle(c : Circle, t : Triangle) : Assertion;
+
+// @label 是否内切
+// @aliases ["内切"]
+// @description 两圆是否内切。
+// @returns 内切的断言。
+// @updated 2026-11-16
+// @param c1 第一个圆。
+// @param c2 第二个圆。
+op is_in_tangent(c1 : Circle, c2 : Circle) : Assertion;
+
+// @label 是否外切
+// @aliases ["外切"]
+// @description 两圆是否外切。
+// @returns 外切的断言。
+// @updated 2026-11-16
+// @param c1 第一个圆。
+// @param c2 第二个圆。
+op is_out_tangent(c1 : Circle, c2 : Circle) : Assertion;
+
+// @label 轨迹
+// @aliases ["轨迹"]
+// @description 动点所在的轨迹。
+// @returns 动点的轨迹曲线。
+// @updated 2026-11-16
+// @param p 动点。
+op locus(p : Point) : Curve;
+
+// @label 象限
+// @aliases ["象限"]
+// @description 点所在的象限。
+// @returns 象限编号。
+// @updated 2026-11-16
+// @param p 平面上的点。
+op quadrant(p : Point) : Number;
+
+// @label 焦距
+// @aliases ["焦距"]
+// @description 圆锥曲线的焦距。
+// @returns 两焦点间的距离。
+// @updated 2026-11-16
+// @param c 圆锥曲线。
+op focal_length(c : ConicSection) : Number;
+
+// @label 半焦距
+// @aliases ["半焦距"]
+// @description 圆锥曲线的半焦距，即中心到焦点的距离。
+// @returns 半焦距数值。
+// @updated 2026-11-16
+// @param c 圆锥曲线。
+op half_focal_length(c : ConicSection) : Number;
+
+// @label 对称轴
+// @aliases ["对称轴"]
+// @description 曲线的对称轴。
+// @returns 曲线的对称轴。
+// @updated 2026-11-16
+// @param c 曲线。
+op symmetry_axis(c : Curve) : Axis;
+
+// @label 中心
+// @aliases ["中心"]
+// @description 中心圆锥曲线的中心。
+// @returns 曲线的中心点。
+// @updated 2026-11-16
+// @param c 中心圆锥曲线。
+op center(c : CentralConic) : Point;
+
+// @label 长轴
+// @aliases ["长轴"]
+// @description 椭圆的长轴。
+// @returns 椭圆的长轴线段。
+// @updated 2026-11-16
+// @param g 椭圆。
+op major_axis(g : Ellipse) : LineSegment;
+
+// @label 短轴
+// @aliases ["短轴"]
+// @description 椭圆的短轴。
+// @returns 椭圆的短轴线段。
+// @updated 2026-11-16
+// @param g 椭圆。
+op minor_axis(g : Ellipse) : LineSegment;
+
+// @label 实轴
+// @aliases ["实轴"]
+// @description 双曲线的实轴。
+// @returns 双曲线的实轴线段。
+// @updated 2026-11-16
+// @param c 双曲线。
+op real_axis(c : Hyperbola) : LineSegment;
+
+// @label 虚轴
+// @aliases ["虚轴"]
+// @description 双曲线的虚轴。
+// @returns 双曲线的虚轴线段。
+// @updated 2026-11-16
+// @param c 双曲线。
+op imaginary_axis(c : Hyperbola) : LineSegment;
+
+// @label 直径
+// @aliases ["直径"]
+// @description 圆的直径长度。
+// @returns 直径数值。
+// @updated 2026-11-16
+// @param c 圆。
+op diameter(c : Circle) : Number;
+
+// @label 半径
+// @aliases ["半径"]
+// @description 圆的半径长度。
+// @returns 半径数值。
+// @updated 2026-11-16
+// @param c 圆。
+op radius(c : Circle) : Number;
+
+// @label 两点确定的直线
+// @aliases ["两点直线"]
+// @description 过两个点的直线。
+// @returns 过两点的直线。
+// @updated 2026-11-16
+// @param p1 第一个点。
+// @param p2 第二个点。
+op line_of(p1 : Point, p2 : Point) : Line;
+
+// @label 斜率
+// @aliases ["斜率"]
+// @description 直线的斜率。
+// @returns 斜率数值。
+// @updated 2026-11-16
+// @param l 直线。
+op slope(l : Line) : Number;
+
+// @label 倾斜角
+// @aliases ["倾斜角"]
+// @description 直线的倾斜角。
+// @returns 倾斜角大小，数值。
+// @updated 2026-11-16
+// @param l 直线。
+op inclination(l : Line) : Number;
+
+// @label 线段
+// @aliases ["线段"]
+// @description 以两点为端点的线段。
+// @returns 两点间的线段。
+// @updated 2026-11-16
+// @param p1 第一个端点。
+// @param p2 第二个端点。
+op line_segment_of(p1 : Point, p2 : Point) : LineSegment;
+
+// @label 长度
+// @aliases ["长度"]
+// @description 线段的长度。
+// @returns 线段长度数值。
+// @updated 2026-11-16
+// @param l 线段。
+op length(l : LineSegment) : Number;
+
+// @label 中点
+// @aliases ["中点"]
+// @description 线段的中点。
+// @returns 线段的中点。
+// @updated 2026-11-16
+// @param l 线段。
+op mid_point(l : LineSegment) : Point;
+
+// @label 所在直线
+// @aliases ["所在直线"]
+// @description 线段所在的直线。
+// @returns 包含该线段的直线。
+// @updated 2026-11-16
+// @param l 线段。
+op overlapping_line(l : LineSegment) : Line;
+
+// @label 中垂线
+// @aliases ["中垂线","垂直平分线"]
+// @description 线段的垂直平分线。
+// @returns 线段的中垂线。
+// @updated 2026-11-16
+// @param l 线段。
+op perpendicular_bisector(l : LineSegment) : Line;
+
+// @label 截弦
+// @aliases ["弦"]
+// @description 直线与圆锥曲线相交所得的弦。
+// @returns 相交所得弦的线段。
+// @updated 2026-11-16
+// @param l 截圆锥曲线的直线。
+// @param c 被截的圆锥曲线。
+op intercept_chord(l : Line, c : ConicSection) : LineSegment;
+
+// @label 三角形
+// @aliases ["三角形"]
+// @description 由三点确定的三角形。
+// @returns 三点构成的三角形。
+// @updated 2026-11-16
+// @param p1 第一个顶点。
+// @param p2 第二个顶点。
+// @param p3 第三个顶点。
+op triangle_of(p1 : Point, p2 : Point, p3 : Point) : Triangle;
+
+// @label 内切圆
+// @aliases ["内切圆"]
+// @description 三角形的内切圆。
+// @returns 三角形的内切圆。
+// @updated 2026-11-16
+// @param t 三角形。
+op inscribed_circle(t : Triangle) : Circle;
+
+// @label 外接圆
+// @aliases ["外接圆"]
+// @description 三角形的外接圆。
+// @returns 三角形的外接圆。
+// @updated 2026-11-16
+// @param t 三角形。
+op circum_circle(t : Triangle) : Circle;
+
+// @label 内心
+// @aliases ["内心"]
+// @description 三角形的内心。
+// @returns 内切圆的圆心。
+// @updated 2026-11-16
+// @param t 三角形。
+op incenter(t : Triangle) : Point;
+
+// @label 垂心
+// @aliases ["垂心"]
+// @description 三角形的垂心。
+// @returns 三条高线的交点。
+// @updated 2026-11-16
+// @param t 三角形。
+op orthocenter(t : Triangle) : Point;
+
+// @label 外心
+// @aliases ["外心"]
+// @description 三角形的外心。
+// @returns 外接圆的圆心。
+// @updated 2026-11-16
+// @param t 三角形。
+op circumcenter(t : Triangle) : Point;
+
+// @label 向量
+// @aliases ["向量"]
+// @description 由起点指向终点的向量。
+// @returns 两点确定的向量。
+// @updated 2026-11-16
+// @param p1 起点。
+// @param p2 终点。
+op vector_of(p1 : Point, p2 : Point) : Vector;
+
+// @label 数量积
+// @aliases ["数量积","点积","内积"]
+// @description 两个向量的数量积。
+// @returns 数量积数值。
+// @updated 2026-11-16
+// @param v1 第一个向量。
+// @param v2 第二个向量。
+op dot_product(v1 : Vector, v2 : Vector) : Number;
+
+// @label 切点
+// @aliases ["切点"]
+// @description 直线与曲线相切的切点。
+// @returns 切点。
+// @updated 2026-11-16
+// @param l 切线。
+// @param c 被切的曲线。
+op tangent_point(l : Line, c : Curve) : Point;
+
+// @label 过点的切线
+// @aliases ["切线"]
+// @description 曲线在给定点处的切线。
+// @returns 过该点的切线。
+// @updated 2026-11-16
+// @param p 曲线上的点。
+// @param c 曲线。
+op point_curve_tangent(p : Point, c : Curve) : Line;
+
+// @label 合取
+// @aliases ["并且"]
+// @description 两个断言同时成立。
+// @returns 两个断言的合取。
+// @updated 2026-11-16
+// @param a 第一个断言。
+// @param b 第二个断言。
+op and(a : Assertion, b : Assertion) : Assertion;
+
+// @label 否定
+// @aliases ["并非"]
+// @description 断言的否定。
+// @returns 否定后的断言。
+// @updated 2026-11-16
+// @param a 断言。
+op negation(a : Assertion) : Assertion;
+
+// @label 周长
+// @aliases ["周长"]
+// @description 封闭图形的周长。
+// @returns 周长数值。
+// @updated 2026-11-16
+// @param c 封闭图形。
+op perimeter(c : ClosedFigure) : Number;
+
+// @label 截距
+// @aliases ["截距"]
+// @description 直线在坐标轴上的截距。
+// @returns 截距数值。
+// @updated 2026-11-16
+// @param l 直线。
+// @param a 坐标轴。
+op intercept(l : Line, a : Axis) : Number;
+
+// @label 投影点
+// @aliases ["投影","射影"]
+// @description 点在直线上的投影点。
+// @returns 点向直线所作垂线的垂足。
+// @updated 2026-11-16
+// @param p 被投影的点。
+// @param l 投影到的直线。
+op projection(p : Point, l : Line) : Point;
+
+// @label 交点个数
+// @aliases ["交点个数"]
+// @description 两条曲线的交点个数。
+// @returns 交点个数。
+// @updated 2026-11-16
+// @param a 第一条曲线。
+// @param b 第二条曲线。
+op num_intersection(a : Curve, b : Curve) : Number;
+
+// @label 垂足
+// @aliases ["垂足"]
+// @description 两个线性对象互相垂直时的交点（垂足）。
+// @returns 垂足点。
+// @updated 2026-11-16
+// @param l1 第一个线性对象。
+// @param l2 第二个线性对象。
+op foot_point(l1 : LinearObject, l2 : LinearObject) : Point;
+
+// @label 点到直线的距离
+// @aliases ["点到直线的距离","点线距"]
+// @description 点到直线的距离。
+// @returns 距离数值。
+// @updated 2026-11-16
+// @param p 点。
+// @param l 直线。
+op point_line_distance(p : Point, l : Line) : Number;
+
+// @label 面积
+// @aliases ["面积"]
+// @description 封闭图形的面积。
+// @returns 面积数值。
+// @updated 2026-11-16
+// @param c 封闭图形。
+op area(c : ClosedFigure) : Number;
+
+// @label 是否相交
+// @aliases ["相交"]
+// @description 两条曲线是否相交。
+// @returns 相交的断言。
+// @updated 2026-11-16
+// @param a 第一条曲线。
+// @param b 第二条曲线。
+op is_intersect(a : Curve, b : Curve) : Assertion;
+
+// @label 是否垂直
+// @aliases ["垂直"]
+// @description 两个线性对象是否垂直。
+// @returns 垂直的断言。
+// @updated 2026-11-16
+// @param l1 第一个线性对象。
+// @param l2 第二个线性对象。
+op is_perpendicular(l1 : LinearObject, l2 : LinearObject) : Assertion;
+
+// @label 是否平行
+// @aliases ["平行"]
+// @description 两个线性对象是否平行。
+// @returns 平行的断言。
+// @updated 2026-11-16
+// @param l1 第一个线性对象。
+// @param l2 第二个线性对象。
+op is_parallel(l1 : LinearObject, l2 : LinearObject) : Assertion;
+
+// @label 点是否在曲线上
+// @aliases ["在曲线上"]
+// @description 点是否位于曲线上。
+// @returns 点在曲线上的断言。
+// @updated 2026-11-16
+// @param p 点。
+// @param c 曲线。
+op point_on_curve(p : Point, c : Curve) : Assertion;
+
+// @label 取最小值时
+// @aliases ["最小值"]
+// @description 该量取最小值时的条件。
+// @returns 取最小值的断言。
+// @updated 2026-11-16
+// @param n 随变量变化的量。
+op when_min(n : Number) : Assertion;
+
+// @label 取最大值时
+// @aliases ["最大值"]
+// @description 该量取最大值时的条件。
+// @returns 取最大值的断言。
+// @updated 2026-11-16
+// @param n 随变量变化的量。
+op when_max(n : Number) : Assertion;
+
+// @label 取值范围
+// @aliases ["取值范围"]
+// @description 该量的取值范围。
+// @returns 取值范围区间。
+// @updated 2026-11-16
+// @param n 待求取值范围的量。
+op range(n : Number) : Interval;
+
+// @label 属于区间
+// @aliases ["属于"]
+// @description 数值是否落在区间内。
+// @returns 属于区间的断言。
+// @updated 2026-11-16
+// @param n 数值。
+// @param i 区间。
+op in(n : Number, i : Interval) : Assertion;
+
+// @label 坐标位置
+// @aliases ["定位"]
+// @description 点在坐标系中的坐标。
+// @returns 点的坐标。
+// @updated 2026-11-16
+// @param p 点。
+op locate(p : Point) : Coordinate;
+
+// @label 渐近线
+// @aliases ["渐近线"]
+// @description 双曲线的渐近线集合。
+// @returns 全部渐近线。
+// @updated 2026-11-16
+// @param c 双曲线。
+op asymptote(c : Hyperbola) : set(Line);
+
+// @label 端点
+// @aliases ["端点"]
+// @description 线性对象的端点集合（直线为空）。
+// @returns 全部端点。
+// @updated 2026-11-16
+// @param l 线性对象。
+op endpoint(l : LinearObject) : set(Point);
+
+// @label 自然对数
+// @aliases ["自然对数"]
+// @description 以 e 为底的对数。
+// @returns 对数值。
+// @updated 2026-11-16
+// @param n 正数。
+op ln(n : Number) : Number;
+
+// @label 指数函数
+// @aliases ["指数"]
+// @description 以 e 为底的指数。
+// @returns 指数值。
+// @updated 2026-11-16
+// @param n 指数。
+op exp(n : Number) : Number;
+
+// @label 正切
+// @aliases ["正切"]
+// @description 角的正切值。
+// @returns 正切值。
+// @updated 2026-11-16
+// @param n 角的弧度值。
+op tan(n : Number) : Number;
+
+// @label 正弦
+// @aliases ["正弦"]
+// @description 角的正弦值。
+// @returns 正弦值。
+// @updated 2026-11-16
+// @param n 角的弧度值。
+op sin(n : Number) : Number;
+
+// @label 余弦
+// @aliases ["余弦"]
+// @description 角的余弦值。
+// @returns 余弦值。
+// @updated 2026-11-16
+// @param n 角的弧度值。
+op cos(n : Number) : Number;
+
+// @label 向量模
+// @aliases ["向量模","模长"]
+// @description 向量的模（长度）。
+// @returns 向量模数值。
+// @updated 2026-11-16
+// @param v 向量。
+op vector_abs(v : Vector) : Number;
+
+// @label 平行线
+// @aliases ["平行线"]
+// @description 与已知直线相距给定距离的平行线。
+// @returns 所求平行线。
+// @updated 2026-11-16
+// @param l 已知直线。
+// @param d 距离。
+op parallel_line_at_distance(l : Line, d : Number) : Line;
+
+// @label 平行线间距离
+// @aliases ["平行线距离"]
+// @description 两条平行直线间的距离。
+// @returns 距离数值。
+// @updated 2026-11-16
+// @param l1 第一条直线。
+// @param l2 第二条直线。
+op parallel_distance(l1 : Line, l2 : Line) : Number;
+
+// @label 定点
+// @aliases ["定点"]
+// @description 曲线（族）恒过的定点。
+// @returns 定点。
+// @updated 2026-11-16
+// @param c 曲线族所在的曲线。
+op fixed_point(c : Curve) : Point;
+
+// @label 任取一个
+// @aliases ["其中之一"]
+// @description 从集合中任取一个元素。
+// @returns 集合中的一个元素。
+// @updated 2026-11-16
+// @param s 元素集合。
+op one_of(s : set(Any)) : Any;
+
+// @label 曲线方程
+// @aliases ["曲线方程","方程"]
+// @description 曲线的一般方程，按 x^2/3 - y^2 EQ 1 的形式表示。
+// @returns 表示曲线方程的表达式。
+// @updated 2026-11-16
+// @param c 曲线。
+op curve_coordinate(c : Curve) : Expression;
+
+// @label 标准方程
+// @aliases ["标准方程"]
+// @description 曲线的标准方程，用 EQ 表示等号。
+// @returns 标准方程的表达式。
+// @updated 2026-11-16
+// @param c 曲线。
+op standard_equation(c : Curve) : Expression;
+
+// @label 某个焦点
+// @aliases ["一个焦点"]
+// @description 按方位取圆锥曲线的某个焦点。
+// @returns 指定方位的焦点。
+// @updated 2026-11-16
+// @param location 方位，如左、右。
+// @param c 圆锥曲线。
+op focus_at(location : Location, c : ConicSection) : Point;
+
+// @label 某个顶点
+// @aliases ["一个顶点"]
+// @description 按方位取圆锥曲线的某个顶点。
+// @returns 指定方位的顶点。
+// @updated 2026-11-16
+// @param location 方位，如左、右、上、下。
+// @param c 圆锥曲线。
+op vertex_at(location : Location, c : ConicSection) : Point;
+
+// @label 某条准线
+// @aliases ["一条准线"]
+// @description 按方位取圆锥曲线的某条准线。
+// @returns 指定方位的准线。
+// @updated 2026-11-16
+// @param location 方位，如左、右。
+// @param c 圆锥曲线。
+op directrix_at(location : Location, c : ConicSection) : Line;
+
+// @label 某一支
+// @aliases ["一支"]
+// @description 按方位取双曲线的某一支。
+// @returns 指定方位的分支。
+// @updated 2026-11-16
+// @param location 方位，如左、右。
+// @param c 双曲线。
+op branch(location : Location, c : Hyperbola) : Curve;
+
+// @label 坐标
+// @aliases ["坐标"]
+// @description 由横纵坐标构造坐标对象。
+// @returns 构造出的坐标。
+// @updated 2026-11-16
+// @param x 横坐标。
+// @param y 纵坐标。
+op coordinate(x : Number, y : Number) : Coordinate;
+
+// @label 区间
+// @aliases ["区间"]
+// @description 由两个端点和开闭情况构造区间。
+// @returns 构造出的区间。
+// @updated 2026-11-16
+// @param a 左端点。
+// @param a_closed 左端是否取到。
+// @param b 右端点。
+// @param b_closed 右端是否取到。
+op interval(a : Number, a_closed : Assertion, b : Number, b_closed : Assertion) : Interval;
+
+// @label 自然数
+// @aliases ["自然数"]
+// @description 自然数；Number 的子类型，可用于计数与序号。
+// @updated 2026-11-17
+concept Natural <: Number;
+
+// @label 幂
+// @aliases ["幂","乘方","次幂"]
+// @description 求底数的指数次幂；cos^n x 这类幂记作 pow(cos(x), n)。
+// @returns 幂值。
+// @updated 2026-11-17
+// @param base 底数。
+// @param exponent 指数，自然数。
+op pow(base : Real, exponent : Natural) : Real;

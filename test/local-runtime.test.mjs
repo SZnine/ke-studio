@@ -89,7 +89,9 @@ test(
       Object.keys(template).every(
         (name) =>
           name.startsWith("shared/") ||
-          name.startsWith("banks/default/questions/default/"),
+          /^banks\/default\/questions\/(geometry|number-theory|algebra|conics)\//.test(
+            name,
+          ),
       ),
     );
     const questions = Object.entries(template).filter(([name]) =>
