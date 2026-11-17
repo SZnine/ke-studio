@@ -323,3 +323,47 @@ it("requires explicit built-in declarations and the C/O tools supply their depen
     ),
   ).toBe(true);
 });
+it("accepts equivalent built-in signatures after explicitly declaring the numeric hierarchy", () => {
+  const concepts = "concept Number;\nconcept Real <: Number;\n";
+  for (const name of ["min", "max", "abs"]) {
+    const parameter = name === "abs" ? "Real" : "set(Real)";
+    const argument = name === "abs" ? "1" : "{1, 2}";
+    const source =
+      concepts +
+      `op ${name}(${parameter}) : Real;\noutput = {${name}(${argument})};`;
+    expect(language.analyze(source, context).issues).toEqual([]);
+  }
+  const repeated =
+    concepts + "op min(set(Real)) : Real; op min(set(Number)) : Number;";
+  expect(
+    language
+      .analyze(repeated, context)
+      .issues.some((issue) => issue.code === "duplicate"),
+  ).toBe(true);
+  const different = concepts + "op min(Real, Real) : Real;";
+  expect(
+    language
+      .analyze(different, context)
+      .issues.some((issue) => issue.code === "closed-overload"),
+  ).toBe(true);
+});
+it("allows every built-in operator to be explicitly declared with its library signature", () => {
+  for (const entry of language.coreEntries.filter(
+    (entry) => entry.kind === "operator",
+  )) {
+    const plan = language.annotate(
+      "",
+      {
+        kind: "operator",
+        name: entry.name,
+        type: entry.type,
+        params: entry.params.map((parameter) => parameter.type),
+      },
+      context,
+    );
+    expect(
+      language.analyze(apply("", plan.edits), context).issues,
+      entry.name,
+    ).toEqual([]);
+  }
+});

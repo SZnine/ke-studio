@@ -246,7 +246,10 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
     ) {
       // Explicit local parents describe this document's ontology. Imported definitions
       // remain unchanged; declarations without a parent retain the imported hierarchy.
-      if (d.parent) relations[name] = [];
+      // Replacing a parent must not erase independent compatibility rules (e.g. numeric aliases).
+      const importedParent = p.typeMetadata[name]?.parent;
+      if (d.parent && importedParent && importedParent !== typeOf(d.parent))
+        relations[name] = (relations[name] ?? []).filter((type) => type !== importedParent);
       symbols.set(name, candidate);
     } else if (previous) issue(d.nameSpan, 'duplicate', `Duplicate declaration '${d.name}'.`);
     else symbols.set(name, candidate);
