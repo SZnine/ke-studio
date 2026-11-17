@@ -267,9 +267,15 @@ export function createEditor(element: HTMLElement, save: () => void) {
               insertText: s.insert,
               sortText: s.sort + s.name,
               filterText: s.filter,
-              insertTextRules: s.snippet
-                ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
-                : undefined,
+              // Finished completions already contain the final indentation.
+              insertTextRules:
+                (s.snippet
+                  ? monaco.languages.CompletionItemInsertTextRule
+                      .InsertAsSnippet
+                  : 0) |
+                (s.finished
+                  ? monaco.languages.CompletionItemInsertTextRule.KeepWhitespace
+                  : 0),
               range: range(s.replace.start, s.replace.end),
               additionalTextEdits: s.edits?.map((edit: any) => ({
                 range: range(edit.start, edit.end),

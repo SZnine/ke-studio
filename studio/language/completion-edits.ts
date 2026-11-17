@@ -63,12 +63,13 @@ export function finishCompletion(source: string, item: any, a: Analysis, p: Prof
   if (next?.kind === 'comment') return;
   const lineStart = source.lastIndexOf('\n', item.replace.start - 1) + 1;
   const indent = source.slice(lineStart, item.replace.start).match(/^[ \t]*/)?.[0] || '';
+  const newline = source.match(/\r?\n/)?.[0] || '\n';
   const closing = role === 'condition' && next && p.surface.SetClose.includes(next.text);
   let insert =
-    item.insert + suffix + separator + '\n' + (role === 'condition' ? indent || '  ' : indent);
+    item.insert + suffix + separator + newline + (role === 'condition' ? indent || '  ' : indent);
   if (closing) {
     const beforeClose = source.slice(source.lastIndexOf('\n', next.start - 1) + 1, next.start);
-    insert += '$0\n' + (/^[ \t]*$/.test(beforeClose) ? beforeClose : indent);
+    insert += '$0' + newline + (/^[ \t]*$/.test(beforeClose) ? beforeClose : indent);
   }
   const gapEnd = next?.start ?? source.length;
   if (!source.slice(end, gapEnd).trim()) end = gapEnd;

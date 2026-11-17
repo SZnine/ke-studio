@@ -3,7 +3,9 @@ import fs from "node:fs/promises";
 import { createLanguage } from "../studio/language/index";
 import type { Language } from "../src/studio/engine";
 import type { CompletionOptions } from "../studio/language/editor";
+import { build } from "esbuild";
 let language: Language;
+let snippetText: (source: string, choice: any) => string;
 beforeAll(async () => {
   const files = Object.fromEntries(
     await Promise.all(
@@ -14,6 +16,33 @@ beforeAll(async () => {
     ),
   );
   language = await createLanguage(files);
+  // Exercise Monaco's real insertion whitespace path without starting a browser.
+  const bundled = await build({
+    stdin: {
+      contents: `
+        import {SnippetParser} from 'monaco-editor/editor/contrib/snippet/browser/snippetParser.js';
+        import {SnippetSession} from 'monaco-editor/editor/contrib/snippet/browser/snippetSession.js';
+        export function snippetText(source, choice) {
+          const from = source.lastIndexOf('\\n', choice.replace.start - 1) + 1;
+          const line = source.slice(from).split(/\\r?\\n/)[0];
+          const model = {getLineContent: () => line, normalizeIndentation: value => value, getEOL: () => source.match(/\\r?\\n/)?.[0] || '\\n'};
+          const snippet = new SnippetParser().parse(choice.snippet ? choice.insert : SnippetParser.escape(choice.insert));
+          SnippetSession.adjustWhitespace(model, {lineNumber: 1, column: choice.replace.start - from + 1}, !choice.finished, snippet);
+          return snippet.toString();
+        }`,
+      resolveDir: process.cwd(),
+      loader: "js",
+    },
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    write: false,
+    loader: { ".css": "empty" },
+  });
+  ({ snippetText } = await import(
+    "data:text/javascript;base64," +
+      Buffer.from(bundled.outputFiles[0].text).toString("base64")
+  ));
 });
 const library = `concept Shape; concept Point; concept Angle; concept Set;
 op midpoint(Point, Point): Point;
@@ -43,7 +72,7 @@ function applyCompletion(input: string, choice: any) {
   );
   const edits = [
     ...(choice.edits || []),
-    { ...choice.replace, text: choice.insert.replace("$0", "") },
+    { ...choice.replace, text: snippetText(source, choice) },
   ].sort((a, b) => b.start - a.start);
   for (const edit of edits)
     source = source.slice(0, edit.start) + edit.text + source.slice(edit.end);
@@ -272,7 +301,7 @@ output = { (x1,x2,x3) | x1: set(Real), x2: set(Real), `;
     const tight = "output = {pt |\r\n  pt: Re§\r\n};";
     const tightChoice = (await smart(tight)).find((c) => c.name === "Real");
     expect(applyCompletion(tight, tightChoice)).toBe(
-      "output = {pt |\r\n  pt : Real,\n  \n};",
+      "output = {pt |\r\n  pt : Real,\r\n  \r\n};",
     );
   });
   it("moves past a declaration's existing semicolon and does not finish an operator parameter", async () => {
@@ -292,5 +321,31 @@ output = { (x1,x2,x3) | x1: set(Real), x2: set(Real), `;
     expect(
       (await smart("op midpoint(Po§, Point) : Point;"))[0].finished,
     ).toBeUndefined();
+  });
+  it("does not accumulate indentation or move the closing symbols over consecutive completions", async () => {
+    for (const [indent, newline, ending] of [
+      ["  ", "\n", "};"],
+      ["\t", "\r\n", "} ;"],
+      ["    ", "\n", "} // end"],
+    ]) {
+      let text =
+        "output = { (f, g, a) |" +
+        newline +
+        indent +
+        "f : Re§" +
+        newline +
+        ending;
+      for (const [i, name] of ["f", "g", "a"].entries()) {
+        const choice = (await smart(text)).find((c) => c.name === "Real");
+        expect(choice.finished).toBe(true);
+        const result = applyCompletion(text, choice);
+        expect(result.split(newline).slice(-2)).toEqual([indent, ending]);
+        expect(result.split(newline)[i + 1]).toBe(indent + name + " : Real,");
+        text = result.replace(
+          newline + indent + newline + ending,
+          newline + indent + ["g", "a"][i] + " : Re§" + newline + ending,
+        );
+      }
+    }
   });
 });
