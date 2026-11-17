@@ -957,29 +957,6 @@ main {
 .annotation-tools [data-annotation="operator"][aria-pressed="true"] b {
   color: var(--annotation-operator);
 }
-.annotation-brush {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex: 1 1 100px;
-  min-width: 0;
-  max-width: 100%;
-  border: 0;
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: color-mix(in srgb, var(--annotation-concept) 10%, transparent);
-  color: var(--annotation-concept);
-}
-.annotation-brush[data-kind="operator"] {
-  background: color-mix(in srgb, var(--annotation-operator) 10%, transparent);
-  color: var(--annotation-operator);
-}
-.annotation-brush span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .evidence-concept,
 .evidence-operator {
   border-radius: 4px;
@@ -1116,26 +1093,15 @@ main {
 }
 .annotation-new {
   width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   text-align: left;
   padding: 11px 8px 3px;
   border: 0;
   border-top: 1px solid var(--annotation-border);
   background: transparent;
   color: var(--annotation-concept);
-}
-.annotation-create {
-  display: grid;
-  gap: 10px;
-}
-.annotation-create label {
-  display: grid;
-  grid-template-columns: 60px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-.annotation-create input {
-  width: 100%;
 }
 .annotation-form-hint,
 #annotation-definition p {
@@ -2290,23 +2256,6 @@ body[data-resizing="col"] * {
   background: #34445c;
   box-shadow: inset 0 0 0 1px #a6bee2;
   color: #fff;
-}
-.annotation-brush {
-  flex: 0 1 auto;
-  padding: 6px 8px 6px 12px;
-}
-#annotation-clear {
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: inherit;
-  width: 24px;
-  height: 24px;
-  font-size: 19px;
-}
-#annotation-clear:hover {
-  background: color-mix(in srgb, currentColor 15%, transparent);
 }
 #question-preview {
   flex: 1;

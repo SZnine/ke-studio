@@ -9,7 +9,7 @@ import {
 import { api } from "./api";
 import { declarationDrag } from "./declaration-drag";
 import { updateMarkdown } from "./markdown";
-import { completionSearchRank } from "../../src/completion-search";
+import { annotationChoices, annotationName } from "../../src/annotation-search";
 import {
   displayType,
   entryKey,
@@ -35,7 +35,7 @@ const letters = { concept: "C", operator: "O" };
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.querySelector<T>("#" + id)!;
 
-/** One selected CO is a reusable brush. Source text and evidence stay in the question. */
+/** Each selected evidence span gets its own CO suggestions. */
 export function createAnnotations(host: Host) {
   const source = monaco.editor.create($("question-prompt"), {
     language: "plaintext",
@@ -69,7 +69,6 @@ export function createAnnotations(host: Host) {
     selectionMark = source.createDecorationsCollection();
   const picker = $("annotation-picker"),
     search = $<HTMLInputElement>("annotation-search");
-  const form = $<HTMLFormElement>("annotation-create");
   document.body.append(picker);
   let annotations: TextAnnotation[] = [],
     mode: Kind = "concept",
@@ -83,7 +82,6 @@ export function createAnnotations(host: Host) {
     currentMark: TextAnnotation | undefined,
     previewAnchor: HTMLElement | undefined,
     disposePosition: (() => void) | undefined;
-  const brushes: Partial<Record<Kind, string>> = {};
   const range = (start: number, end: number) =>
     monaco.Range.fromPositions(
       model.getPositionAt(start),
@@ -101,8 +99,6 @@ export function createAnnotations(host: Host) {
       ].map((e) => [entryKey(e), e]),
     ).values(),
   ];
-  const brush = () =>
-    allEntries().find((entry) => entryKey(entry) === brushes[mode]);
   const resolveMark = (mark: TextAnnotation) => {
     const entries = allEntries().filter(
       (entry) => entry.kind === mark.kind && entry.name === mark.name,
@@ -204,12 +200,6 @@ export function createAnnotations(host: Host) {
           String(activeTool && button.dataset.annotation === mode),
         ),
       );
-    const entry = brush();
-    $("annotation-brush").hidden = !activeTool || !entry;
-    $("annotation-brush").dataset.kind = mode;
-    $("annotation-brush").firstElementChild!.textContent = entry
-      ? entry.label || entry.name
-      : "";
     const raw = editing || activeTool;
     $("question-prompt").hidden = !raw;
     $("question-preview").hidden = raw;
@@ -222,9 +212,7 @@ export function createAnnotations(host: Host) {
       ? editing
         ? "可直接编辑、删除原文"
         : "Markdown 与公式预览 · C / O 划选标注"
-      : entry
-        ? `划选即标注 · ${entry.name}${entry.draft ? " · 待完善" : ""}`
-        : "划选文字后选择 CO · 再次点击工具可取消";
+      : "划选文字自动匹配 CO · Enter 选用 · 没有合适项可新建";
     source.updateOptions({ readOnly: !editing });
   }
   function renderMarks() {
@@ -381,9 +369,8 @@ export function createAnnotations(host: Host) {
     )
       close();
   });
-  function show(view: "search" | "create" | "detail") {
+  function show(view: "search" | "detail") {
     $("annotation-search-view").hidden = view !== "search";
-    form.hidden = view !== "create";
     $("annotation-detail").hidden = view !== "detail";
     picker.hidden = false;
     error();
@@ -403,21 +390,11 @@ export function createAnnotations(host: Host) {
     selected = evidence;
     currentMark = mark;
     $("annotation-title").textContent = `选择${titles[mode]}`;
-    $("annotation-new").textContent = `＋ 新建${titles[mode]}`;
     search.value = "";
     renderChoices();
     show("search");
     search.focus();
   }
-  $("annotation-clear").addEventListener("click", () => {
-    if (busy) return;
-    delete brushes[mode];
-    activeTool = false;
-    editing = true;
-    close();
-    updateTools();
-    source.focus();
-  });
   function showDetail(mark: TextAnnotation, anchor?: HTMLElement) {
     close();
     previewAnchor = anchor;
@@ -482,9 +459,7 @@ export function createAnnotations(host: Host) {
         showDetail(existing);
         return;
       }
-      const entry = brush();
-      if (entry) void apply(entry, evidence);
-      else openSearch(evidence);
+      openSearch(evidence);
     } else if (event.target.position) {
       const at = model.getOffsetAt(event.target.position);
       const mark = annotations.find(
@@ -504,26 +479,23 @@ export function createAnnotations(host: Host) {
   function renderChoices() {
     const state = host.workspace(),
       query = search.value.trim();
-    choices = allEntries()
-      .filter((entry) => entry.kind === mode)
-      .map((entry) => ({
-        entry,
-        rank: completionSearchRank(
-          query,
-          entry.name,
-          [entry.label || "", ...(entry.aliases || [])],
-          [entry.description || ""],
-        ),
-      }))
-      .filter((item) => item.rank >= 0)
-      .sort(
-        (a, b) =>
-          a.rank - b.rank ||
-          (state.usage[b.entry.name] || 0) - (state.usage[a.entry.name] || 0) ||
-          a.entry.name.localeCompare(b.entry.name),
-      )
-      .slice(0, 8)
-      .map((item) => item.entry);
+    choices = annotationChoices(
+      allEntries(),
+      mode,
+      query,
+      selected?.quote || "",
+      state.usage,
+    );
+    const name = annotationName(query, selected?.quote || "");
+    const create = $<HTMLButtonElement>("annotation-new");
+    create.textContent = name
+      ? `＋ 新建${titles[mode]}「${name}」`
+      : `＋ 新建${titles[mode]}`;
+    create.disabled = !name || busy;
+    create.title =
+      mode === "operator"
+        ? "以当前文字命名，签名可稍后在字典中补齐"
+        : "以当前文字命名，父级可稍后在字典中补齐";
     active = 0;
     const list = $("annotation-results");
     list.replaceChildren();
@@ -548,6 +520,15 @@ export function createAnnotations(host: Host) {
             ? " · " + entry.parent
             : "");
       text.append(label, detail);
+      if (entry.description) {
+        const description = document.createElement("small");
+        description.textContent =
+          entry.description.length > 80
+            ? entry.description.slice(0, 80) + "…"
+            : entry.description;
+        description.title = entry.description;
+        text.append(description);
+      }
       button.append(icon, text);
       button.addEventListener("click", () => void choose(index));
       list.append(button);
@@ -579,14 +560,12 @@ export function createAnnotations(host: Host) {
     if (event.key === "Enter") {
       event.preventDefault();
       if (choices.length) void choose(active);
-      else openCreate();
+      else void createCo();
     }
   });
   async function choose(index: number) {
     const entry = choices[index];
     if (!entry || busy) return;
-    brushes[mode] = entryKey(entry);
-    updateTools();
     if (selected) await apply(entry, { ...selected });
     else {
       close();
@@ -682,62 +661,25 @@ export function createAnnotations(host: Host) {
       if (entry) void apply(entry, { ...currentMark }, true);
     }
   });
-  function openCreate() {
-    form.reset();
-    (form.elements.namedItem("name") as HTMLInputElement).value =
-      search.value.trim();
-    (form.elements.namedItem("label") as HTMLInputElement).value =
-      selected?.quote.slice(0, 80) || "";
-    form.querySelectorAll<HTMLElement>("[data-co-field]").forEach((field) => {
-      field.hidden = field.dataset.coField !== mode;
-    });
-    $("annotation-title").textContent = `新建${titles[mode]}`;
-    const state = host.workspace();
-    const domain = state.question?.draft
-      ? state.domains.find((d) => d.id === state.question?.coScope) ||
-        state.domain
-      : state.domain;
-    $("annotation-create-scope").textContent =
-      `保存到「${domain.name}」${mode === "operator" ? " · 签名可稍后在字典中补齐" : ""}`;
-    show("create");
-    (form.elements.namedItem("name") as HTMLInputElement).focus();
-  }
-  $("annotation-new").addEventListener("click", openCreate);
-  $("annotation-create-back").addEventListener("click", () => {
-    $("annotation-title").textContent = `选择${titles[mode]}`;
-    show("search");
-    search.focus();
-  });
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
+  async function createCo() {
     if (busy) return;
-    const value = (name: string) =>
-      (form.elements.namedItem(name) as HTMLInputElement).value.trim();
+    const name = annotationName(search.value, selected?.quote || "");
+    if (!name) return;
     const entry: Entry = {
       kind: mode,
-      name: value("name"),
-      type: mode === "operator" ? value("returns") : "Concept",
-      params:
-        mode === "operator" && value("params")
-          ? value("params")
-              .split(/[,，]/)
-              .map((type, i) => ({ name: `arg${i + 1}`, type: type.trim() }))
-          : [],
-      ...(value("label") ? { label: value("label") } : {}),
-      ...(mode === "concept" && value("parent")
-        ? { parent: value("parent") }
-        : {}),
+      name,
+      type: mode === "operator" ? "" : "Concept",
+      params: [],
+      label: (selected?.quote.trim() || name).slice(0, 80),
     };
     const evidence = selected && { ...selected },
       identity = identify(),
       state = host.workspace();
-    const button = form.querySelector<HTMLButtonElement>(
-      'button[type="submit"]',
-    )!;
+    const button = $<HTMLButtonElement>("annotation-new");
     busy = true;
     button.disabled = true;
     error();
-    void api<Workspace>("/api/co", "POST", {
+    await api<Workspace>("/api/co", "POST", {
       domain: state.domain.id,
       entry,
       questionId: state.question?.id,
@@ -751,8 +693,6 @@ export function createAnnotations(host: Host) {
             .flatMap((library) => library.entries)
             .find((co) => co.kind === entry.kind && co.name === entry.name) ||
           entry;
-        brushes[mode] = entryKey(saved);
-        updateTools();
         busy = false;
         if (evidence) await apply(saved, evidence);
         else {
@@ -765,7 +705,8 @@ export function createAnnotations(host: Host) {
         busy = false;
         button.disabled = false;
       });
-  });
+  }
+  $("annotation-new").addEventListener("click", () => void createCo());
   return {
     source,
     snapshot: () => ({ prompt: source.getValue(), annotations: readMarks() }),

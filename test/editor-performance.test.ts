@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { createLanguage } from "../studio/language/index";
 import { Store } from "../src/studio/store";
 import type { Language, LanguageEngine } from "../src/studio/engine";
+import { annotationName } from "../src/annotation-search";
 
 const disk = vi.hoisted(() => ({
   files: new Map<string, string>(),
@@ -255,6 +256,44 @@ it("persists evidence with a question and preserves it on unrelated edits", asyn
       })
     ).annotations,
   ).toEqual([]);
+});
+it("creates selected Chinese names in the domain and keeps unknown operator signatures empty", async () => {
+  const conceptName = annotationName("", "新曲线");
+  const created = await store.createCo("child", {
+    kind: "concept",
+    name: conceptName,
+    type: "Concept",
+    params: [],
+  });
+  const plan = await store.inspectEditor({
+    ...input(created.editorContext),
+    text: "",
+    annotation: { kind: "concept", name: conceptName },
+  });
+  expect(plan).toMatchObject({ declaration: "concept 新曲线;" });
+  expect(disk.files.get("shared/libraries/child.keh")).toContain(
+    "concept 新曲线;",
+  );
+  const name = annotationName("", "计算（距离）");
+  const pending = await store.createCo("child", {
+    kind: "operator",
+    name,
+    label: "计算（距离）",
+    type: "",
+    params: [],
+  });
+  expect(
+    pending.libraries
+      .find((library) => library.id === "child")
+      ?.entries.find((entry) => entry.name === name),
+  ).toMatchObject({ draft: true, type: "", params: [] });
+  expect(
+    await store.inspectEditor({
+      ...input(pending.editorContext),
+      text: "",
+      annotation: { kind: "operator", name, params: [] },
+    }),
+  ).toMatchObject({ draft: true, edits: [] });
 });
 it("creates a draft's CO in its selected domain so it stays available in that scope", async () => {
   const file = "banks/default/drafts/child/draft.json";

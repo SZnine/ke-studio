@@ -59,6 +59,29 @@ it("adds parent concepts before the selected concept and reuses existing declara
   ).toEqual([]);
   expect(language.analyze(text, context).issues).toEqual([]);
 });
+it("includes the complete library parent chain and missing parents of an existing concept", () => {
+  const scope = language.context([
+    {
+      id: "geometry",
+      name: "Geometry",
+      text: "concept Curve; concept LinearObject <: Curve; concept Line <: LinearObject;",
+    },
+  ]);
+  const source = "concept Line <: LinearObject;\noutput = {};";
+  const plan = language.annotate(
+    source,
+    { kind: "concept", name: "Line" },
+    scope,
+  );
+  const text = apply(source, plan.edits);
+  expect(text).toBe(
+    "concept Curve;\nconcept LinearObject <: Curve;\nconcept Line <: LinearObject;\noutput = {};",
+  );
+  expect(
+    language.annotate(text, { kind: "concept", name: "Line" }, scope).edits,
+  ).toEqual([]);
+  expect(language.analyze(text, scope).issues).toEqual([]);
+});
 it("uses the selected operator overload, includes its concept dependencies and preserves KE", () => {
   const source = "// 已有内容\noutput = {};";
   const plan = language.annotate(

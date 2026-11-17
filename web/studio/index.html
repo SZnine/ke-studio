@@ -265,16 +265,6 @@
                   <b>O</b> 算子
                 </button>
               </div>
-              <div id="annotation-brush" class="annotation-brush" hidden>
-                <span></span
-                ><button
-                  id="annotation-clear"
-                  aria-label="清除当前画笔"
-                  title="清除当前 CO"
-                >
-                  ×
-                </button>
-              </div>
             </div>
             <div
               id="annotation-links"
@@ -324,7 +314,7 @@
                 <input
                   id="annotation-search"
                   type="search"
-                  placeholder="搜索名称、中文或拼音"
+                  placeholder="按划选文字推荐，也可输入名称、描述或拼音"
                   aria-label="搜索 CO"
                   autocomplete="off"
                 />
@@ -337,44 +327,6 @@
                   ＋ 新建概念
                 </button>
               </div>
-              <form id="annotation-create" class="annotation-create" hidden>
-                <label
-                  >名称<input
-                    name="name"
-                    required
-                    autocomplete="off"
-                    placeholder="CO 主名称"
-                /></label>
-                <label
-                  >中文名<input
-                    name="label"
-                    autocomplete="off"
-                    placeholder="可留空"
-                /></label>
-                <label data-co-field="concept"
-                  >父概念<input name="parent" placeholder="可留空"
-                /></label>
-                <label data-co-field="operator"
-                  >输入类型<input
-                    name="params"
-                    placeholder="可留空；多个类型用逗号分隔"
-                /></label>
-                <label data-co-field="operator"
-                  >返回类型<input
-                    name="returns"
-                    placeholder="可留空，保存为待完善 CO"
-                /></label>
-                <p
-                  id="annotation-create-scope"
-                  class="annotation-form-hint"
-                ></p>
-                <div class="annotation-actions">
-                  <button type="button" id="annotation-create-back">返回</button
-                  ><button type="submit" class="annotation-primary">
-                    创建并使用
-                  </button>
-                </div>
-              </form>
               <div id="annotation-detail" hidden>
                 <div id="annotation-definition"></div>
                 <div class="annotation-actions">
