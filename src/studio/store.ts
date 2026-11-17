@@ -206,6 +206,8 @@ export class Store {
       text: string;
       offset?: number;
       completion?: Parameters<Language["inspect"]>[3];
+      annotation?: Parameters<Language["annotate"]>[1];
+      move?: { start: number; end: number };
     },
     format = false,
   ) {
@@ -220,14 +222,23 @@ export class Store {
     const { language, revision, profile } = snapshot;
     if (profile instanceof Error) throw profile;
     return {
-      ...(format
-        ? { text: language.format(input.text, profile) }
-        : await language.inspect(
-            input.text,
-            input.offset || 0,
-            profile,
-            input.completion,
-          )),
+      ...(input.annotation
+        ? language.annotate(input.text, input.annotation, profile)
+        : input.move
+          ? language.moveDeclaration(
+              input.text,
+              input.move,
+              input.offset || 0,
+              profile,
+            )
+          : format
+            ? { text: language.format(input.text, profile) }
+            : await language.inspect(
+                input.text,
+                input.offset || 0,
+                profile,
+                input.completion,
+              )),
       languageRevision: revision,
     };
   }

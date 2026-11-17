@@ -375,6 +375,7 @@ main {
 }
 .editor-panel {
   background: var(--background);
+  container-type: inline-size;
 }
 .tabs {
   align-items: stretch;
@@ -391,37 +392,30 @@ main {
   display: flex;
   gap: 14px;
   align-items: center;
-  padding: 12px 24px 2px;
-  flex-shrink: 0;
-}
-.question-fields {
-  padding: 4px 24px 12px;
+  padding: 8px 18px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 #question-number {
   display: block;
-  width: 100%;
+  width: 180px;
+  min-width: 65px;
   border-color: transparent;
   padding: 6px 0;
-  font-size: 23px;
+  font-size: 17px;
   font-weight: 650;
 }
 #question-prompt {
-  width: 100%;
-  min-height: 48px;
-  max-height: 150px;
-  padding: 5px 0;
-  border-color: transparent;
-  line-height: 1.8;
-  resize: vertical;
+  flex: 1;
+  min-height: 120px;
 }
-#question-prompt:hover,
 #question-number:hover {
   border-bottom-color: var(--border);
 }
 .question-notes {
   color: var(--muted-foreground);
   font-size: 12px;
+  padding: 10px 16px;
 }
 .question-notes summary {
   cursor: pointer;
@@ -663,7 +657,7 @@ main {
 }
 .diagnostics {
   border-top: 1px solid var(--border);
-  height: var(--diagnostics-height, 110px);
+  height: var(--diagnostics-height, 86px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -717,6 +711,288 @@ main {
   color: var(--muted-foreground);
   margin-left: auto;
   white-space: nowrap;
+}
+.diagnostics.collapsed {
+  height: 34px;
+}
+.diagnostics.collapsed #issues {
+  display: none;
+}
+.issue-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 25%, transparent);
+}
+.issue-row .issue {
+  align-items: center;
+}
+.issue-row .issue-message {
+  margin: 0;
+  color: var(--foreground);
+  white-space: normal;
+  flex: 1;
+}
+.issue-detail {
+  grid-column: 1 / -1;
+  padding: 0 18px 8px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.issue-detail summary {
+  cursor: pointer;
+}
+.issue-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 160px;
+  overflow: auto;
+}
+.issue-action {
+  margin: 0 16px 0 8px;
+  align-self: start;
+  padding-top: 7px;
+}
+.annotation-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.ke-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 250px;
+  min-height: 0;
+}
+.ke-pane .toolbar {
+  min-height: 48px;
+  padding: 7px 16px;
+}
+.source-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 var(--source-width, 350px);
+  max-width: calc(100% - 300px);
+  min-width: 230px;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+.source-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.annotation-tools {
+  display: flex;
+  gap: 5px;
+}
+.annotation-tools button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-weight: 600;
+  padding: 0;
+}
+.annotation-tools button[aria-pressed="true"] {
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+[data-annotation="concept"],
+.annotation-concept {
+  color: var(--annotation-concept);
+}
+[data-annotation="operator"],
+.annotation-operator {
+  color: var(--annotation-operator);
+}
+[data-annotation="var"],
+.annotation-var {
+  color: var(--annotation-var);
+}
+:root {
+  --annotation-concept: #176fbd;
+  --annotation-operator: #8550ad;
+  --annotation-var: #287852;
+}
+:root[data-theme="dark"] {
+  --annotation-concept: #8bc4f5;
+  --annotation-operator: #d8acf3;
+  --annotation-var: #8ad2ad;
+}
+.evidence-concept {
+  background: color-mix(in srgb, var(--annotation-concept) 17%, transparent);
+  border-bottom: 2px solid var(--annotation-concept);
+}
+.evidence-operator {
+  background: color-mix(in srgb, var(--annotation-operator) 17%, transparent);
+  border-bottom: 2px solid var(--annotation-operator);
+}
+.evidence-var {
+  background: color-mix(in srgb, var(--annotation-var) 17%, transparent);
+  border-bottom: 2px solid var(--annotation-var);
+}
+.evidence-selection {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.source-caption {
+  padding: 7px 16px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+#annotation-links {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+.annotation-link {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 11px;
+  border-bottom: 1px solid currentColor;
+  cursor: grab;
+}
+.annotation-link button {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 5px;
+  font-size: inherit;
+}
+.annotation-picker {
+  position: absolute;
+  top: 55px;
+  left: 12px;
+  right: 12px;
+  z-index: 15;
+  background: var(--background);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px #0002;
+  padding: 12px;
+  max-height: calc(100% - 65px);
+  overflow: auto;
+}
+.annotation-picker header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+#annotation-quote {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+}
+#annotation-search {
+  width: 100%;
+  font-size: 13px;
+}
+#annotation-values {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0;
+}
+#annotation-values label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+#annotation-values input {
+  width: 0;
+  flex: 1;
+  font-size: 12px;
+}
+#annotation-results {
+  margin-top: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+.annotation-result {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+.annotation-result:hover,
+.annotation-result.active {
+  background: var(--surface);
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
+}
+.annotation-result strong,
+.annotation-result small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.annotation-result strong {
+  font-size: 12px;
+}
+.annotation-result small {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+.declaration-drop-line {
+  border-top: 2px solid var(--accent);
+}
+@media (max-width: 850px) {
+  .annotation-workspace {
+    flex-direction: column;
+  }
+  .ke-pane {
+    flex: 1;
+  }
+  .source-pane {
+    order: -1;
+    flex: 0 0 28%;
+    max-width: none;
+    min-height: 160px;
+    max-height: 280px;
+    border-left: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .source-pane > .resize-handle {
+    display: none;
+  }
+  .source-caption,
+  .source-pane .question-notes {
+    display: none;
+  }
+}
+@container (max-width: 600px) {
+  .annotation-workspace {
+    flex-direction: column;
+  }
+  .source-pane {
+    order: -1;
+    flex: 0 0 28%;
+    max-width: none;
+    min-height: 160px;
+    max-height: 280px;
+    border-left: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .source-pane > .resize-handle,
+  .source-caption,
+  .source-pane .question-notes {
+    display: none;
+  }
 }
 .issue-empty {
   padding: 10px 24px;

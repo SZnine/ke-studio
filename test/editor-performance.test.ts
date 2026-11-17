@@ -147,6 +147,54 @@ it("serves completion without file reads or waiting for an in-flight save", asyn
   }
 });
 
+it("uses the same prepared CO scope to generate annotation edits without filesystem access", async () => {
+  const state = await store.workspace("child");
+  disk.reads.mockClear();
+  const result = await store.inspectEditor({
+    ...input(state.editorContext),
+    text: "",
+    annotation: { kind: "operator", name: "locate" },
+  });
+  expect("declaration" in result && result.declaration).toBe(
+    "op locate(Shape) : Point;",
+  );
+  expect(disk.reads).not.toHaveBeenCalled();
+  expect(disk.writes).not.toHaveBeenCalled();
+});
+
+it("persists evidence with a question and preserves it on unrelated edits", async () => {
+  const annotation = {
+    id: "evidence",
+    start: 0,
+    end: 3,
+    quote: "曲线C",
+    kind: "concept" as const,
+    name: "Shape",
+    declaration: "concept Shape;",
+  };
+  const question = await store.questions.prepare(
+    "child",
+    { number: "01", prompt: "曲线C", annotations: [annotation] },
+    true,
+  );
+  await store.questions.write("child", question);
+  const [file, text] = disk.writes.mock.calls.at(-1)!;
+  disk.files.set(file, text);
+  const edited = await store.questions.prepare("child", {
+    id: question.id,
+    notes: "补充备注",
+  });
+  expect(edited.annotations).toEqual([annotation]);
+  expect(
+    (
+      await store.questions.prepare("child", {
+        id: question.id,
+        prompt: "已修改原文",
+      })
+    ).annotations,
+  ).toEqual([]);
+});
+
 it("reuses unchanged CO scopes and replaces them after CO or ranking changes", async () => {
   const prepare = vi.spyOn(store, "context");
   const first = await store.workspace("child");

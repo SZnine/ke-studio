@@ -151,7 +151,11 @@
       <section id="panel-editor" class="panel editor-panel" hidden>
         <div class="question-heading">
           <button class="text-button" id="back-questions">← 题目列表</button
-          ><span class="spacer"></span>
+          ><input
+            id="question-number"
+            aria-label="题号"
+            placeholder="题号"
+          /><span class="spacer"></span>
           <button
             class="icon-button"
             id="previous-question"
@@ -173,50 +177,151 @@
           </button>
           <button class="text-button danger" id="delete-question">删除</button>
         </div>
-        <div class="question-fields">
-          <input id="question-number" aria-label="题号" placeholder="题号" />
-          <textarea
-            id="question-prompt"
-            aria-label="题干"
-            placeholder="输入原题，或导入含题干注释的 KE 文件"
-            rows="2"
-          ></textarea>
-          <details class="question-notes">
-            <summary>备注</summary>
-            <textarea
-              id="question-notes"
-              aria-label="题目备注"
-              rows="2"
-              placeholder="标注说明或待确认的问题"
-            ></textarea>
-          </details>
-        </div>
-        <div class="toolbar">
-          <span class="file-label" id="document-name">document.ke</span
-          ><span class="spacer"></span
-          ><label class="inline-label"
-            >补全<select id="completion-style">
-              <option value="smart">智能</option>
-              <option value="identifier">仅名称</option>
-              <option value="parentheses">名称与括号</option>
-              <option value="arguments">完整参数</option>
-              <option value="off">关闭</option>
-            </select></label
-          ><button class="button" id="export-document">导出</button
-          ><button class="button" id="format-document">格式化</button>
-        </div>
-        <div id="editor" aria-label="KE 编辑器"></div>
-        <div class="diagnostics">
-          <div class="diagnostics-title">
-            <span id="diagnostic-count">检查</span
-            ><span class="muted">点击定位 · Ctrl+Space 补全</span>
+        <div class="annotation-workspace">
+          <div class="ke-pane">
+            <div class="toolbar">
+              <span class="file-label" id="document-name">document.ke</span
+              ><span class="spacer"></span
+              ><label class="inline-label"
+                >补全<select id="completion-style">
+                  <option value="smart">智能</option>
+                  <option value="identifier">仅名称</option>
+                  <option value="parentheses">名称与括号</option>
+                  <option value="arguments">完整参数</option>
+                  <option value="off">关闭</option>
+                </select></label
+              ><button class="button" id="export-document">导出</button
+              ><button class="button" id="format-document">格式化</button>
+              <button
+                id="move-declaration"
+                class="icon-button"
+                draggable="true"
+                hidden
+                title="拖动所选声明，吸附到合法位置"
+                aria-label="拖动所选声明"
+              >
+                ⠿
+              </button>
+            </div>
+            <div id="editor" aria-label="KE 编辑器"></div>
+            <div class="diagnostics">
+              <div class="diagnostics-title">
+                <span id="diagnostic-count">检查</span
+                ><button
+                  id="toggle-issues"
+                  class="text-button"
+                  aria-expanded="true"
+                >
+                  收起
+                </button>
+              </div>
+              <div id="issues"></div>
+            </div>
+            <footer class="editor-footer">
+              <span id="save-status">正在加载…</span
+              ><span id="cursor">Ln 1, Col 1</span>
+            </footer>
           </div>
-          <div id="issues"></div>
+          <aside class="source-pane" aria-label="题目原文与标注">
+            <div class="source-toolbar">
+              <strong>原文</strong><span class="spacer"></span>
+              <div
+                class="annotation-tools"
+                role="toolbar"
+                aria-label="划选标注工具"
+              >
+                <button
+                  data-annotation="concept"
+                  title="概念 · Alt+C"
+                  aria-label="概念标注"
+                  aria-pressed="false"
+                >
+                  C
+                </button>
+                <button
+                  data-annotation="operator"
+                  title="算子 · Alt+O"
+                  aria-label="算子标注"
+                  aria-pressed="false"
+                >
+                  O
+                </button>
+                <button
+                  data-annotation="var"
+                  title="实例 · Alt+V"
+                  aria-label="实例标注"
+                  aria-pressed="false"
+                >
+                  V
+                </button>
+              </div>
+            </div>
+            <div id="question-prompt" aria-label="题目原文编辑器"></div>
+            <div id="annotation-links" aria-label="已关联声明"></div>
+            <div class="source-caption" id="annotation-hint">
+              选择 C / O / V，再划选原文
+            </div>
+            <details class="question-notes">
+              <summary>备注</summary>
+              <textarea
+                id="question-notes"
+                aria-label="题目备注"
+                rows="2"
+                placeholder="标注说明或待确认的问题"
+              ></textarea>
+            </details>
+            <div
+              id="annotation-picker"
+              class="annotation-picker"
+              role="dialog"
+              aria-label="关联 CO"
+              hidden
+            >
+              <header>
+                <span id="annotation-quote"></span
+                ><button
+                  id="annotation-close"
+                  class="icon-button"
+                  aria-label="取消标注"
+                >
+                  ×
+                </button>
+              </header>
+              <input
+                id="annotation-search"
+                type="search"
+                placeholder="名称、中文或拼音缩写"
+                aria-label="搜索概念或算子"
+                autocomplete="off"
+              />
+              <div id="annotation-values" hidden>
+                <label
+                  >实例名<input
+                    id="annotation-name"
+                    placeholder="例如 C"
+                    autocomplete="off"
+                /></label>
+                <label
+                  >值（可选）<input
+                    id="annotation-value"
+                    placeholder="KE 表达式"
+                    autocomplete="off"
+                /></label>
+              </div>
+              <div
+                id="annotation-results"
+                role="listbox"
+                aria-label="CO 搜索结果"
+              ></div>
+              <p
+                id="annotation-error"
+                class="form-error"
+                role="status"
+                hidden
+              ></p>
+            </div>
+          </aside>
         </div>
-        <footer class="editor-footer">
-          <span id="save-status">正在加载…</span
-          ><span id="cursor">Ln 1, Col 1</span>
-        </footer>
       </section>
       <section id="panel-library" class="panel" hidden>
         <div class="toolbar">

@@ -1,4 +1,4 @@
-/** Shared pointer/keyboard resizing for the three workspace boundaries. */
+/** Shared pointer/keyboard resizing for workspace boundaries. */
 export function initLayout() {
   const root = document.documentElement;
   const size = (selector: string) =>
@@ -29,11 +29,20 @@ export function initLayout() {
         innerWidth > 1050 ? innerWidth - sidebarWidth() - 320 : innerWidth,
     },
     {
+      name: "source",
+      selector: ".source-pane",
+      label: "调整原文栏宽度",
+      edge: "left",
+      initial: 350,
+      min: 230,
+      max: () => size(".annotation-workspace").width - 300,
+    },
+    {
       name: "diagnostics",
       selector: ".diagnostics",
       label: "调整底部检查栏高度",
       edge: "top",
-      initial: 110,
+      initial: 86,
       min: 34,
       max: () => size(".diagnostics").height + size("#editor").height - 170,
     },
@@ -80,9 +89,17 @@ export function initLayout() {
     fit();
     const position = (event: PointerEvent) =>
       horizontal ? event.clientY : event.clientX;
+    const expand = () => {
+      if (spec.name !== "diagnostics") return;
+      panel.classList.remove("collapsed");
+      const toggle = document.querySelector("#toggle-issues")!;
+      toggle.textContent = "收起";
+      toggle.setAttribute("aria-expanded", "true");
+    };
     handle.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
+      expand();
       drag = {
         pointer: event.pointerId,
         start: position(event),
@@ -109,13 +126,17 @@ export function initLayout() {
     handle.addEventListener("pointerup", finish);
     handle.addEventListener("pointercancel", finish);
     handle.addEventListener("lostpointercapture", finish);
-    handle.addEventListener("dblclick", () => apply(spec.initial, true));
+    handle.addEventListener("dblclick", () => {
+      expand();
+      apply(spec.initial, true);
+    });
     handle.addEventListener("keydown", (event) => {
       const keys = horizontal
         ? ["ArrowUp", "ArrowDown"]
         : ["ArrowLeft", "ArrowRight"];
       if (!keys.includes(event.key)) return;
       event.preventDefault();
+      expand();
       const direction = event.key === keys[0] ? -1 : 1;
       apply(
         dimension() +

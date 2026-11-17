@@ -6,6 +6,7 @@ import { completionSearchRank } from './completion-search';
 import { isCompatible } from './types';
 import type { Token } from './ast';
 import { pendingBindings, clauseContinuation } from './completion-edits';
+import { diagnostics } from './diagnostics';
 
 export const tokenTypes = [
   'keyword',
@@ -32,10 +33,10 @@ export function describeSignature(s: Symbol, p: Profile) {
   const parameters = s.params.map((type, i) => {
     if (i) label += p.style.argument + ' ';
     const start = label.length;
-    label += `${s.parameterNames?.[i] || `arg${i + 1}`}${p.surface.Colon[0]} ${display(type, p)}`;
+    label += `${s.parameterNames?.[i] || `arg${i + 1}`} ${p.surface.Colon[0]} ${display(type, p)}`;
     return { label: [start, label.length], documentation: s.parameterDescriptions?.[i] || '' };
   });
-  label += `${p.surface.CallClose[0]}${p.surface.Colon[0]} ${display(s.type, p)}`;
+  label += `${p.surface.CallClose[0]} ${p.surface.Colon[0]} ${display(s.type, p)}`;
   return {
     label,
     parameters,
@@ -46,7 +47,7 @@ export function describeSignature(s: Symbol, p: Profile) {
 /** Declarations use CO input/output types; parameter names remain visible in signature help. */
 export function describeDeclaration(s: Symbol, p: Profile) {
   const params = s.params.map((type) => display(type, p)).join(p.style.argument + ' ');
-  return `${s.name}${p.surface.CallOpen[0]}${params}${p.surface.CallClose[0]}${p.surface.Colon[0]} ${display(s.type, p)}`;
+  return `${s.name}${p.surface.CallOpen[0]}${params}${p.surface.CallClose[0]} ${p.surface.Colon[0]} ${display(s.type, p)}`;
 }
 
 /** The grammar owns delimiters. Nested calls, sets and tuples cannot advance an outer argument. */
@@ -280,6 +281,7 @@ export async function inspect(
           detail: '声明输出中尚未绑定的变量',
           insert:
             item.name +
+            ' ' +
             p.surface.Colon[0] +
             ' ${1' +
             (item.type ? ':' + esc(item.type) : '') +
@@ -528,6 +530,13 @@ export async function inspect(
             sort: order(0)
           });
     if (!completions.length) completions.push(...descriptionMatches);
+    if (
+      p.surface.Colon.includes(previous?.text || '') &&
+      previous!.start > 0 &&
+      !/\s/.test(source[previous!.start - 1])
+    )
+      for (const item of completions)
+        item.edits = [{ start: previous!.start, end: previous!.start, text: ' ' }];
     completions.sort((a, b) => a.sort.localeCompare(b.sort) || a.name.localeCompare(b.name));
   }
   const keywords = new Set(
@@ -557,10 +566,7 @@ export async function inspect(
   const reference = a.references.find((r) => r.start <= offset && offset <= r.end && r.target);
   return {
     continuationEdits: smart && options.onEnter ? clauseContinuation(source, offset, a, p) : [],
-    issues: a.issues.map((issue) => ({
-      ...issue,
-      severity: ['missing-value', 'naming-style'].includes(issue.code) ? 'warning' : 'error'
-    })),
+    issues: diagnostics(a, p),
     highlights,
     completions,
     signature: call && {

@@ -150,7 +150,7 @@ output = { (x1,x2,x3) | x1: set(Real), x2: set(Real), `;
     const declaration = (await smart("op mid§")).find(
       (c) => c.name === "midpoint",
     );
-    expect(declaration?.insert).toBe("midpoint(Point, Point): Point;");
+    expect(declaration?.insert).toBe("midpoint(Point, Point) : Point;");
     const range = await smart("op midpoint(Point, Point): §");
     expect(range[0].insert).toBe("Point;");
     expect((await smart("op midpoint(Point, Point): Po§;"))[0].insert).toBe(
@@ -187,12 +187,12 @@ output = { (x1,x2,x3) | x1: set(Real), x2: set(Real), `;
   it("offers missing output bindings instead of unrelated variables at the next clause", async () => {
     const result = await smart(bindings + "§ };");
     expect(result.map((c) => c.name)).toEqual(["x3"]);
-    expect(result[0].insert).toBe("x3: ${1}$0");
+    expect(result[0].insert).toBe("x3 : ${1}$0");
     const inferred = await smart(
       declarations + "output = { midpoint(A, B) | A: Point, § };",
     );
     expect(inferred[0].name).toBe("B");
-    expect(inferred[0].insert).toBe("B: ${1:Point}$0");
+    expect(inferred[0].insert).toBe("B : ${1:Point}$0");
     expect(await smart(declarations + "output = { A | A: Point, § };")).toEqual(
       [],
     );

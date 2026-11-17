@@ -78,6 +78,15 @@ export class Questions {
       prompt: input.prompt ?? previous?.prompt ?? "",
       ke: input.ke ?? previous?.ke ?? "",
       notes: input.notes ?? previous?.notes ?? "",
+      annotations: (input.annotations ?? previous?.annotations ?? []).filter(
+        (mark) =>
+          mark.start >= 0 &&
+          mark.end > mark.start &&
+          (input.prompt ?? previous?.prompt ?? "").slice(
+            mark.start,
+            mark.end,
+          ) === mark.quote,
+      ),
       updated: new Date().toISOString(),
       ...(this.collection === "drafts"
         ? {
@@ -102,5 +111,6 @@ export class Questions {
 export const questionSummary = ({
   ke,
   notes,
+  annotations,
   ...item
 }: Question): QuestionSummary => item;

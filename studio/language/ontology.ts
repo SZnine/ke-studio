@@ -283,7 +283,7 @@ export function renderEntry(e: Entry): string {
     const params = e.params.map((p) => {
       if (!id(p.name)) throw new Error('请输入合法参数名。');
       comments.push(annotation('param ' + p.name, p.description));
-      return `${p.name}${defaults.surface.Colon[0]} ${type(p.type)}`;
+      return `${p.name} ${defaults.surface.Colon[0]} ${type(p.type)}`;
     });
     declaration = `${defaults.operatorAliases[0]} ${e.name}${defaults.surface.CallOpen[0]}${params.join(defaults.style.argument + ' ')}${defaults.surface.CallClose[0]} ${defaults.surface.Colon[0]} ${type(e.type)}${defaults.style.statement}`;
   } else

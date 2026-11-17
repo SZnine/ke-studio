@@ -2,6 +2,7 @@ import "./style.css";
 import { initStorage } from "./storage";
 import { createDomains } from "./domains";
 import { createEditor } from "./editor";
+import { createAnnotations } from "./annotations";
 import { createChat } from "./chat";
 import { createCoke } from "./coke";
 import { createDrafts } from "./drafts";
@@ -118,6 +119,13 @@ initLayout();
 const ke = createEditor($("#editor"), () => {
   void run(saveDocument);
 });
+const annotations = createAnnotations({
+  workspace: () => state,
+  ke,
+  changed: changedQuestion,
+  save: () => void run(saveDocument),
+  notify,
+});
 let state: Workspace;
 const displayType = (type: string) =>
   typeLabel(type, state?.language.editor.typeSyntax);
@@ -175,7 +183,7 @@ function questionDraft() {
   return {
     id: state.question!.id,
     number: $<HTMLInputElement>("#question-number").value,
-    prompt: $<HTMLTextAreaElement>("#question-prompt").value,
+    ...annotations.snapshot(),
     notes: $<HTMLTextAreaElement>("#question-notes").value,
     ke: ke.getText(),
     coScope: state.question?.draft
@@ -198,31 +206,57 @@ async function showIssues() {
   const issues = await ke.diagnostics(),
     container = $("#issues");
   if (!issues) return;
+  const errors = issues.filter((i) => i.severity === "error").length;
+  const warnings = issues.length - errors;
   $("#diagnostic-count").textContent = issues.length
-    ? `检查 · ${issues.length}`
-    : "检查";
+    ? "检查 · " +
+      [errors ? `${errors} 个问题` : "", warnings ? `${warnings} 个提示` : ""]
+        .filter(Boolean)
+        .join(" · ")
+    : ke.getText().trim()
+      ? "检查 · 通过"
+      : "检查";
   container.replaceChildren();
-  if (!issues.length)
-    container.append(
-      node(
-        "div",
-        ke.getText().trim()
-          ? "未发现问题"
-          : "开始编写 KE，输入关键字即可补全。",
-        "issue-empty",
-      ),
-    );
   for (const issue of issues) {
+    const row = node("div", "", "issue-row");
     const item = button(
-      issue.message,
+      "",
       () => ke.jump(issue.start),
       `issue ${issue.severity}`,
     );
     const position = ke.editor.getModel()!.getPositionAt(issue.start);
-    item.append(node("span", `${position.lineNumber}:${position.column}`));
-    container.append(item);
+    item.append(
+      node("span", `L${position.lineNumber}`),
+      node("span", issue.message, "issue-message"),
+    );
+    row.append(item);
+    if (issue.replacement !== undefined) {
+      const version = ke.editor.getModel()!.getVersionId();
+      row.append(
+        button(
+          "修复",
+          () => {
+            if (version !== ke.editor.getModel()!.getVersionId())
+              return showIssues();
+            ke.applyEdit(issue.start, issue.end, issue.replacement);
+          },
+          "text-button issue-action",
+        ),
+      );
+    }
+    if (issue.detail) {
+      const details = node("details", "", "issue-detail");
+      details.append(node("summary", "详情"), node("pre", issue.detail));
+      row.append(details);
+    }
+    container.append(row);
   }
 }
+$("#toggle-issues").addEventListener("click", () => {
+  const collapsed = $(".diagnostics").classList.toggle("collapsed");
+  $("#toggle-issues").textContent = collapsed ? "展开" : "收起";
+  $("#toggle-issues").setAttribute("aria-expanded", String(!collapsed));
+});
 let diagnosticTimer: ReturnType<typeof setTimeout>;
 function changedQuestion() {
   if (loadingDocument) return;
@@ -239,7 +273,7 @@ function changedQuestion() {
   diagnosticTimer = setTimeout(showIssues, 450);
 }
 ke.editor.onDidChangeModelContent(changedQuestion);
-for (const id of ["question-number", "question-prompt", "question-notes"])
+for (const id of ["question-number", "question-notes"])
   $("#" + id).addEventListener("input", changedQuestion);
 ke.editor.onDidChangeCursorPosition(({ position }) => {
   $("#cursor").textContent =
@@ -273,14 +307,13 @@ function applyState(next: Workspace, loadDocument = false) {
   loadingDocument = true;
   try {
     ke.setWorkspace(next, loadDocument);
+    if (loadDocument) annotations.load(next.question);
   } finally {
     loadingDocument = false;
   }
   if (loadDocument) {
     documentDirty = false;
     $<HTMLInputElement>("#question-number").value = next.question?.number || "";
-    $<HTMLTextAreaElement>("#question-prompt").value =
-      next.question?.prompt || "";
     $<HTMLTextAreaElement>("#question-notes").value =
       next.question?.notes || "";
   }
@@ -328,7 +361,10 @@ function setTab(value: string) {
     if (item.dataset.tab === value) item.setAttribute("aria-current", "page");
     else item.removeAttribute("aria-current");
   });
-  if (value === "editor") ke.editor.layout();
+  if (value === "editor") {
+    ke.editor.layout();
+    annotations.source.layout();
+  }
   $("#view-title").textContent =
     (
       {

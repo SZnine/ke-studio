@@ -10,6 +10,8 @@
 - `ontology.ts`、`library.ts`：声明元数据、库组合和当前文法下的声明渲染。
 - `editor.ts`：消费解析、符号和文法位置，提供补全、签名、悬停、着色与格式化。
 - `completion-edits.ts`：从当前作用域和 CO 签名提供待绑定变量，处理继续书写条件时的分隔符。
+- `annotation.ts`：原文划选到概念、算子和实例声明的编辑计划，复用当前 CO、父类型、签名和文法；声明拖放只选择合法边界并保留依赖顺序。
+- `diagnostics.ts`：简短的可操作检查信息，保留原始详情及明确的逐处修复。
 - `ast.ts`、`types.ts`、`call-contract.ts`、`symbol-aliases.ts`、`completion-search.ts`：共享数据和小型辅助函数。
 - `index.ts`：稳定的语言服务入口；`manifest.json` 标识人的语言版本，程序另用内容摘要识别实际改动。
 
@@ -34,3 +36,5 @@
 “智能”模式用 CO 的输入输出类型补齐声明，调用用 Tab 参数占位和签名提示；已有括号不重复插入。类型位置（包括成员绑定中的嵌套 set）仅提供类型与类型构造器。条件分隔符后的空位置优先提供尚未绑定的输出变量，能从 CO 参数推断出唯一类型时预填，不能确定则留空；不臆测数学数值。继续条件按 Enter 时，仅在前一条完整且未带分隔符时插入文法规定的 ConditionSeparator。手动展开仍保留合法的其他选择。
 
 实现参考 [VS Code 参数占位](https://code.visualstudio.com/docs/editing/userdefinedsnippets)、[TypeScript Language Server 调用补全](https://github.com/typescript-language-server/typescript-language-server/blob/master/src/completion.ts) 和 [Langium 作用域解析](https://langium.org/docs/learn/workflow/resolve_cross_references/)。候选、分隔符和补全编辑均由本语言包产生，Monaco 只负责展示和应用；调整 CO 签名或文法后无需改界面代码。
+
+原文工具参考 [Label Studio 的文本片段标注](https://labelstud.io/guide/labeling)，使用 [Monaco decorations 和编辑操作](https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor_editor_api.editor.IStandaloneCodeEditor.html) 跟踪位置、显示高亮和悬停说明。原文保持纯文本，关联信息随题目 JSON 保存；修改片段内容导致证据不再匹配时解除该高亮，不删除用户代码。

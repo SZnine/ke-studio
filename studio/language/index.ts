@@ -10,6 +10,7 @@ import { defaults, profile } from './profile';
 import { combineLibraries, emptyLibrary, readHeader, renderEntry } from './ontology';
 import { withLibrary } from './library';
 import { inspect, format, tokenTypes } from './editor';
+import { annotate, moveDeclaration, type AnnotationRequest } from './annotation';
 
 export async function createLanguage(files: Record<string, string>, previousCore?: any[]) {
   const grammarServices = createLangiumGrammarServices(EmptyFileSystem).grammar;
@@ -77,7 +78,10 @@ export async function createLanguage(files: Record<string, string>, previousCore
     return p;
   }
   // Cursor movement, completion, signatures and diagnostics share one analysis per text/scope.
-  const analyses = new WeakMap<object, { text: string; value: ReturnType<typeof analyzeProgram> }>();
+  const analyses = new WeakMap<
+    object,
+    { text: string; value: ReturnType<typeof analyzeProgram> }
+  >();
   function analyze(text: string, p: any) {
     const saved = analyses.get(p);
     if (saved?.text === text) return saved.value;
@@ -125,6 +129,17 @@ export async function createLanguage(files: Record<string, string>, previousCore
       ]
     },
     analyze,
+    annotate(text: string, request: AnnotationRequest, p: any) {
+      return annotate(text, request, analyze(text, p), p);
+    },
+    moveDeclaration(
+      text: string,
+      selection: { start: number; end: number },
+      offset: number,
+      p: any
+    ) {
+      return moveDeclaration(text, selection, offset, analyze(text, p));
+    },
     inspect(text: string, offset: number, p: any, options: any = {}) {
       return inspect(text, offset, analyze(text, p), p, options);
     },

@@ -238,6 +238,10 @@ export function createEditor(element: HTMLElement, save: () => void) {
                 ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
                 : undefined,
               range: range(s.replace.start, s.replace.end),
+              additionalTextEdits: s.edits?.map((edit: any) => ({
+                range: range(edit.start, edit.end),
+                text: edit.text,
+              })),
               command: s.suggest
                 ? { id: "ke.completeNext", title: "继续补全" }
                 : s.kind === "operator" && s.snippet
@@ -392,6 +396,11 @@ export function createEditor(element: HTMLElement, save: () => void) {
   return {
     editor,
     getText: () => model.getValue(),
+    applyEdit(start: number, end: number, text: string) {
+      editor.pushUndoStop();
+      editor.executeEdits("ke-fix", [{ range: range(start, end), text }]);
+      editor.pushUndoStop();
+    },
     setText(text: string) {
       editor.executeEdits("ke-studio", [
         { range: model.getFullModelRange(), text },

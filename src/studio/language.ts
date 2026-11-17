@@ -57,6 +57,19 @@ export interface Question {
   updated: string;
   draft?: true;
   coScope?: string;
+  annotations?: TextAnnotation[];
+}
+export interface TextAnnotation {
+  id: string;
+  start: number;
+  end: number;
+  quote: string;
+  kind: "concept" | "operator" | "var";
+  name: string;
+  type?: string;
+  params?: string[];
+  value?: string;
+  declaration: string;
 }
 export interface ProposalItem {
   id: string;
@@ -76,7 +89,7 @@ export interface Proposal {
   created: string;
   items: ProposalItem[];
 }
-export type QuestionSummary = Omit<Question, "ke" | "notes">;
+export type QuestionSummary = Omit<Question, "ke" | "notes" | "annotations">;
 export interface CokeCase {
   id: string;
   title: string;
