@@ -1,6 +1,6 @@
 # KE Studio
 
-[打开网页](https://sznine.github.io/ke-studio/)
+[打开网页](https://sznine.github.io/ke-studio/) · [下载本地版](https://github.com/SZnine/ke-studio/releases/tag/local) · [二次开发](CONTRIBUTING.md)
 
 在浏览器中编写 KE，管理领域 CO 和题库，并通过模型对话修改题目、审核 CO 与语法建议。
 
@@ -49,17 +49,29 @@ npm run template -- "本地工作区文件夹"
 
 脚本只读取共享领域、CO 和语言，不复制题目、对话、日志或模型配置。检查修改后提交到 `main`，GitHub Actions 会构建并更新网页。
 
-## 开发与验证
+## 本地运行与二次开发
+
+下载本地包后安装 Node.js 22 或更新版本，解压并双击 `start.cmd`。默认打开 `http://127.0.0.1:4340/ke-studio/`，无需安装 npm 依赖。详见[本地运行说明](docs/local.md)。
+
+二次开发直接克隆本仓库：
 
 ```sh
+git clone https://github.com/SZnine/ke-studio.git
+cd ke-studio
 npm ci
-npm run check
-npm test
-npm run build
 npm run dev
 ```
 
-本地地址为 `http://127.0.0.1:4331/ke-studio/`，模拟 GitHub Pages 的子路径。生产站点完全静态，不需要 Node 服务。
+开发地址为 `http://127.0.0.1:4331/ke-studio/`。源码修改后自动构建，刷新页面即可查看；`npm start` 启动日常使用的本地版。源码入口与语法更新流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+```sh
+npm run check
+npm test
+npm run package:local
+npm run test:local
+```
+
+构建输出为 `dist/` 和 `release/ke-studio-local.zip`。推送 `main` 会更新网页与同一个本地发行包。应用数据留在用户选择的文件夹中。
 
 `node scripts/browser-check.mjs` 生成仅用于本地验证的 `check.html`，通过浏览器沙箱文件系统检查真实 Worker、WASM 编译、题库隔离、继承、草稿范围和删除恢复。下一次正式构建会清除该页面。
 

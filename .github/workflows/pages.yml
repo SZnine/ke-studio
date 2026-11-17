@@ -22,7 +22,12 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
-      - run: npm run build
+      - run: npm run package:local
+      - run: npm run test:local
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ke-studio-local
+          path: release/ke-studio-local.zip
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
@@ -37,3 +42,26 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+  local:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: ke-studio-local
+          path: release
+      - name: Publish the current local package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view local >/dev/null 2>&1; then
+            gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/local" --method PATCH -f sha="$GITHUB_SHA" -F force=true
+            gh release upload local release/ke-studio-local.zip --clobber
+            gh release edit local --notes-file docs/local.md
+          else
+            gh release create local release/ke-studio-local.zip --target "$GITHUB_SHA" --title "KE Studio 本地版" --notes-file docs/local.md --latest
+          fi

@@ -8,8 +8,12 @@
     "build": "node scripts/build.mjs",
     "check": "tsc --noEmit",
     "test": "vitest run",
-    "dev": "node scripts/serve.mjs",
-    "template": "node scripts/template.mjs"
+    "dev": "node scripts/dev.mjs",
+    "template": "node scripts/template.mjs",
+    "start": "node scripts/start.mjs",
+    "preview": "node scripts/serve.mjs",
+    "package:local": "npm run build && node scripts/package-local.mjs",
+    "test:local": "node --test test/local-runtime.test.mjs"
   },
   "dependencies": {
     "@noble/hashes": "1.8.0",
@@ -25,8 +29,12 @@
     "@types/node": "^22.0.0",
     "@types/wicg-file-system-access": "^2023.10.6",
     "esbuild": "0.25.12",
+    "fflate": "0.8.3",
+    "prettier": "3.6.2",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0",
-    "prettier": "3.6.2"
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

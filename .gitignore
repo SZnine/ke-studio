@@ -2,3 +2,10 @@ node_modules/
 dist/
 .tmp/
 *.log
+
+/release/
+/ke-workspace.json
+/shared/
+/banks/
+/settings/
+/trash/
