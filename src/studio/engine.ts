@@ -4,6 +4,7 @@ import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
 import type { LanguageState } from "./language";
 import { assetUrl } from "./assets";
+import type { LanguageUpdate } from "./language-defaults";
 
 export const digest = (files: Record<string, string>) =>
   bytesToHex(
@@ -29,6 +30,7 @@ export interface Compiled {
 export class LanguageEngine {
   active?: Compiled;
   error?: string;
+  update?: LanguageUpdate;
   private attempted = "";
   private pending?: Promise<void>;
   private compilation = Promise.resolve();
@@ -159,6 +161,7 @@ export class LanguageEngine {
     this.active = compiled;
     this.attempted = compiled.revision;
     this.error = undefined;
+    this.error = undefined;
   }
   get service() {
     if (!this.active)
@@ -171,6 +174,7 @@ export class LanguageEngine {
       version: this.active?.service.manifest.version || "",
       files: await this.sources(),
       error: this.error,
+      update: this.update,
       tokenTypes: this.active?.service.tokenTypes || [],
       editor: this.active?.service.editor || { brackets: [], triggers: [] },
     };

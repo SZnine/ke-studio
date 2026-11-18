@@ -9,7 +9,7 @@ import {
   isNumericType,
   SymbolMetadata
 } from './profile';
-import { isCompatible } from './types';
+import { isCompatible, isEquivalent, sameParameters } from './types';
 import { CallContract } from './call-contract';
 import { canonicalName, canonicalType, findAliased } from './symbol-aliases';
 export interface Symbol extends SymbolMetadata {
@@ -189,15 +189,7 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
       declaration: d
     };
     if (previous && previous.kind === 'operator' && candidate.kind === 'operator') {
-      const same = signatures(previous).find(
-        (x) =>
-          x.params.length === candidate.params.length &&
-          x.params.every(
-            (type, i) =>
-              isCompatible(type, candidate.params[i], relations, false) &&
-              isCompatible(candidate.params[i], type, relations, false)
-          )
-      );
+      const same = signatures(previous).find((x) => sameParameters(x.params, candidate.params, relations));
       const source =
         same ?? signatures(previous).find((x) => x.params.length === candidate.params.length);
       if (same) {
@@ -216,20 +208,17 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
           candidate.params[source.contract.callback] === 'operator')
       )
         candidate.contract = source.contract;
-      const equivalentReturn =
-        same &&
-        isCompatible(same.type, candidate.type, relations, false) &&
-        isCompatible(candidate.type, same.type, relations, false);
-      if (same && (same.declaration || !p.operatorRedeclaration || !equivalentReturn))
-        issue(d.nameSpan, 'duplicate', `Conflicting or duplicate overload '${d.name}'.`);
+      if (same?.declaration)
+        issue(d.nameSpan, 'duplicate', `Duplicate local overload '${d.name}'.`);
+      else if (same && !isEquivalent(same.type, candidate.type, relations))
+        issue(d.nameSpan, 'library-signature',
+          `算子 '${d.name}' 返回类型与库不一致：库中为 ${displayType(same.type)}，文档为 ${displayType(candidate.type)}。`);
       else if (same) {
         if (same === previous) {
           candidate.overloads = previous.overloads;
           symbols.set(name, candidate);
         } else previous.overloads = previous.overloads!.map((x) => (x === same ? candidate : x));
-      } else if (!p.operatorRedeclaration && !previous.declaration)
-        issue(d.nameSpan, 'duplicate', `Duplicate imported operator '${d.name}'.`);
-      else if (signatures(previous).some((s) => s.contract?.overloads === 'closed'))
+      } else if (signatures(previous).some((s) => s.contract?.overloads === 'closed'))
         issue(
           d.nameSpan,
           'closed-overload',
@@ -239,7 +228,6 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
     } else if (
       previous?.kind === 'concept' &&
       candidate.kind === 'concept' &&
-      p.conceptRedeclaration &&
       !previous.declaration &&
       // A built-in scalar has no library origin, so it may only be restated bare.
       (previous.origin ? !scalarTypes.includes(name) : scalarTypes.includes(name) && !d.parent)

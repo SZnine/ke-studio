@@ -8,6 +8,7 @@ export interface LocalWorkspace {
   id: string;
   banks: Bank[];
   activeBank: string;
+  languageDefaults?: Record<string, string>;
 }
 /** The publisher's template is copied once. Later releases never replace local files. */
 export async function initializeWorkspace(
@@ -27,6 +28,13 @@ export async function initializeWorkspace(
 }
 export async function workspaceInfo(): Promise<LocalWorkspace> {
   return JSON.parse(await files.readFile("ke-workspace.json"));
+}
+export async function saveLanguageDefaults(baseline: Record<string, string>) {
+  const data = await workspaceInfo();
+  if (JSON.stringify(data.languageDefaults) === JSON.stringify(baseline))
+    return;
+  data.languageDefaults = baseline;
+  await atomic("ke-workspace.json", JSON.stringify(data, null, 2));
 }
 export async function selectBank(id: string) {
   const data = await workspaceInfo();

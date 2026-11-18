@@ -30,8 +30,6 @@ export interface Profile {
   maxOutputs: number;
   surface: Record<string, string[]>;
   symbolAliases: SymbolAliases;
-  operatorRedeclaration: boolean;
-  conceptRedeclaration: boolean;
   elementAssertions: boolean;
   conceptRoot: string;
   conceptSets: boolean;
@@ -103,7 +101,6 @@ export const defaults: Profile = {
   },
   variableKeyword: '',
   operatorAliases: [],
-  conceptRedeclaration: true,
   conceptSets: true,
   declarationOrder: true,
   declareBuiltIns: true,
@@ -120,7 +117,6 @@ export const defaults: Profile = {
   equationSymbols: true,
   constantNamePattern: '^[^A-Z]',
   negationKeyword: '',
-  operatorRedeclaration: true,
   elementAssertions: true
 };
 export function profile(overrides: Partial<Profile> = {}, base: Profile = defaults): Profile {

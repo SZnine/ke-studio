@@ -4,7 +4,11 @@ import { randomUUID } from "./files";
 import { version } from "../../package.json";
 import { atomic, optional } from "./files";
 import { preference, savePreference } from "./preferences";
-import { workspaceInfo } from "./workspace";
+import { workspaceInfo, saveLanguageDefaults } from "./workspace";
+import {
+  planLanguageDefaults,
+  type PublishedLanguage,
+} from "./language-defaults";
 import { ancestors, moveDomain, scopeIds, domainSources } from "./domains";
 import { scopedSources } from "./library-scope";
 import { digest, LanguageEngine, Language } from "./engine";
@@ -420,6 +424,39 @@ export class Store {
     );
     await this.engine.commit(compiled);
     return changes;
+  }
+  async updateDefaultLanguage(published: PublishedLanguage) {
+    const before = await this.engine.sources();
+    const plan = planLanguageDefaults(
+      before,
+      published,
+      (await workspaceInfo()).languageDefaults,
+    );
+    this.engine.update = { updated: [], customized: plan.customized };
+    try {
+      if (Object.keys(plan.changes).length) {
+        const compiled = await this.engine.compile({
+          ...before,
+          ...plan.changes,
+        });
+        if (digest(await this.engine.sources()) !== digest(before))
+          throw new Error(
+            "语言文件在同步期间被修改，已保留本地内容，请重新同步。",
+          );
+        await this.acceptLanguage(
+          before,
+          compiled.files,
+          compiled.service,
+          "同步发布版默认语言文件",
+        );
+        await this.engine.commit(compiled);
+        this.engine.update.updated = Object.keys(plan.changes);
+      }
+      await saveLanguageDefaults(plan.baseline);
+    } catch (error) {
+      this.engine.update.error =
+        error instanceof Error ? error.message : String(error);
+    }
   }
   async acceptLanguage(
     before: Record<string, string>,

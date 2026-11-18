@@ -20,3 +20,10 @@ export function isCompatible(
   }
   return false;
 }
+
+/** Declaration identity uses equivalence, not one-way subtype compatibility. */
+export const isEquivalent = (left: string, right: string, relations: Record<string, string[]>) =>
+  isCompatible(left, right, relations, false) && isCompatible(right, left, relations, false);
+
+export const sameParameters = (left: string[], right: string[], relations: Record<string, string[]>) =>
+  left.length === right.length && left.every((type, index) => isEquivalent(type, right[index], relations));

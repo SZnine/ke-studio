@@ -15,6 +15,7 @@ export interface LanguageState {
   version: string;
   files: Record<string, string>;
   error?: string;
+  update?: import("./language-defaults").LanguageUpdate;
   tokenTypes: string[];
   editor: {
     brackets: string[][];

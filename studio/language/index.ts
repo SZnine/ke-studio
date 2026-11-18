@@ -39,11 +39,14 @@ export async function createLanguage(files: Record<string, string>, previousCore
   if (definitions.length) throw new Error(definitions.map((e: any) => e.message).join('\n'));
   initializeSyntax(services);
   let coreText = files['core.keh'];
-  if (previousCore)
+  let core = readHeader(coreText, 'language/core.keh');
+  // Keep valid user-owned definitions byte-for-byte; only migrate an incompatible grammar surface.
+  if (core.issues.length && previousCore) {
     for (const entry of [...previousCore].reverse())
       coreText =
         coreText.slice(0, entry.span.start) + renderEntry(entry) + coreText.slice(entry.span.end);
-  const core = readHeader(coreText, 'language/core.keh');
+    core = readHeader(coreText, 'language/core.keh');
+  }
   if (core.issues.length)
     throw new Error('core.keh: ' + core.issues.map((i) => i.message).join('\n'));
   const coreLibrary = combineLibraries(emptyLibrary(), [

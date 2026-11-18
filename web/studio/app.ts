@@ -303,10 +303,12 @@ function applyState(next: Workspace, loadDocument = false) {
     draftRevision = next.language.revision;
   }
   const alert = $("#language-alert");
-  alert.hidden = !next.language.error;
+  alert.hidden = !next.language.error && !next.language.update?.error;
   alert.textContent = next.language.error
     ? "语言编译未通过，请在“语言”页修复。当前保持上次可用版本。"
-    : "";
+    : next.language.update?.error
+      ? "默认语言更新未通过，仍使用本地规则；请到“语言”页查看。"
+      : "";
   loadingDocument = true;
   try {
     ke.setWorkspace(next, loadDocument);
@@ -671,6 +673,15 @@ function renderLanguage() {
       ? "有未应用的修改"
       : `已应用 · KE ${state.language.version}`);
   $("#language-state").classList.toggle("error", !!state.language.error);
+  const update = state.language.update;
+  if (update?.updated.length)
+    $("#language-state").textContent +=
+      `\n已同步默认文件：${update.updated.join("、")}`;
+  if (update?.customized.length)
+    $("#language-state").textContent +=
+      `\n保留本地修改：${update.customized.join("、")}`;
+  if (update?.error)
+    $("#language-state").textContent += `\n更新未应用：${update.error}`;
   $<HTMLButtonElement>("#save-language").disabled = !languageDirty;
 }
 $("#language-file").addEventListener("change", () => {
@@ -701,6 +712,24 @@ click("#reload-language", async () => {
   languageDirty = false;
   applyState(
     await api(`/api/state?domain=${encodeURIComponent(state.domain.id)}`),
+  );
+});
+click("#update-language", async () => {
+  if (languageDirty)
+    return notify("请先应用或撤销语言草稿，再同步默认文件。", true);
+  const next = await api<Workspace>("/api/language/update", "POST", {
+    domain: state.domain.id,
+    questionId: state.question?.id,
+    draft: state.question?.draft,
+  });
+  applyState(next);
+  const update = next.language.update;
+  notify(
+    update?.error ||
+      (update?.updated.length
+        ? `已同步 ${update.updated.length} 个默认语言文件。`
+        : "默认语言已是当前版本；本地修改保持原样。"),
+    !!update?.error,
   );
 });
 click("#export-language", () =>

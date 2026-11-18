@@ -367,3 +367,61 @@ it("allows every built-in operator to be explicitly declared with its library si
     ).toEqual([]);
   }
 });
+it("accepts the screenshot's domain sqrt declaration and reuses it across C/O and completion", async () => {
+  const scope = language.context([
+    { id: "math", name: "数学", text: "op sqrt(n : Number) : Number;" },
+  ]);
+  const text = `concept Number;
+concept Real <: Number;
+op sqrt(Number) : Real;
+output = {(a, x) |
+  a : {sqrt(2), 1, 2}, x : Real,
+  2*x-1 >= 0, x-sqrt(2*x-1) >= 0, x+sqrt(2*x-1) >= 0,
+  sqrt(x+sqrt(2*x-1)) + sqrt(x-sqrt(2*x-1)) = a
+};`;
+  expect(language.analyze(text, scope).issues).toEqual([]);
+  expect(
+    language.annotate(
+      text,
+      { kind: "operator", name: "sqrt", params: ["Number"], type: "Number" },
+      scope,
+    ).edits,
+  ).toEqual([]);
+  const restated = text.replace("sqrt(Number)", "sqrt(Real)");
+  expect(language.analyze(restated, scope).issues).toEqual([]);
+  expect(
+    language.annotate(restated, { kind: "operator", name: "sqrt" }, scope)
+      .edits,
+  ).toEqual([]);
+  const typing = restated + "\nop sq";
+  expect(
+    (
+      await language.inspect(typing, typing.length, scope, { manual: true })
+    ).completions.some((choice) => choice.name === "sqrt"),
+  ).toBe(false);
+  const conflict = "concept Number; concept String; op sqrt(Number) : String;";
+  expect(language.analyze(conflict, scope).issues).toEqual([
+    expect.objectContaining({
+      code: "library-signature",
+      message: expect.stringContaining("库中为 Number，文档为 String"),
+    }),
+  ]);
+  expect(() =>
+    language.annotate(conflict, { kind: "operator", name: "sqrt" }, scope),
+  ).toThrow("返回类型");
+});
+it("keeps a valid built-in library unchanged when recompiling language logic", async () => {
+  const files = Object.fromEntries(
+    await Promise.all(
+      (await fs.readdir("studio/language")).map(async (name) => [
+        name,
+        await fs.readFile("studio/language/" + name, "utf8"),
+      ]),
+    ),
+  );
+  const next = await createLanguage(
+    files,
+    language.readHeader(files["core.keh"], "language/core.keh").entries,
+  );
+  expect(next.coreText).toBe(files["core.keh"]);
+});

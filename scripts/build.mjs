@@ -2,7 +2,10 @@ import { build } from "esbuild";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { languageDefaults } from "./language-defaults.mjs";
+const defaults = await languageDefaults();
 const fingerprint = createHash("sha256");
+fingerprint.update(JSON.stringify(defaults));
 async function hashSources(folder) {
   for (const entry of (await fs.readdir(folder, { withFileTypes: true })).sort(
     (a, b) => (a.name < b.name ? -1 : 1),
@@ -87,6 +90,7 @@ async function collect(folder, prefix) {
 await collect("initial", "");
 await collect("studio/language", "shared/language/");
 await fs.writeFile("dist/initial.json", JSON.stringify(template));
+await fs.writeFile("dist/language-defaults.json", JSON.stringify(defaults));
 await fs.copyFile(
   "node_modules/esbuild-wasm/esbuild.wasm",
   "dist/esbuild.wasm",

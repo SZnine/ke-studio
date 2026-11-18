@@ -41,3 +41,5 @@
 原文工具参考 [Label Studio 的文本片段标注](https://labelstud.io/guide/labeling)，使用 [Monaco decorations 和编辑操作](https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor_editor_api.editor.IStandaloneCodeEditor.html) 跟踪位置、显示高亮和悬停说明。原文保持纯文本，关联信息随题目 JSON 保存；修改片段内容导致证据不再匹配时解除该高亮，不删除用户代码。
 
 `declareBuiltIns` 默认开启：代码显式引用内置概念或算子时，必须有本文件声明；库仍提供检索、签名及类型依据。数值和字符串字面量的隐式类型不要求额外声明。C/O 声明生成会补齐内置参数类型；严格检查只作用于 KE，`.keh` 的签名不受此限制。
+
+库中定义与文档声明分开处理：文档首次声明等价签名合法，本文件再次声明同一签名才是重复声明。返回类型与库不一致单独提示差异。检查、C/O 声明复用及声明补全共用 `types.ts` 的类型等价判断；`Number` 与 `Real` 等兼容别名不会造成重复插入。声明是否必需由 `declareBuiltIns` 控制，定义来自库不会阻止本文首次声明。

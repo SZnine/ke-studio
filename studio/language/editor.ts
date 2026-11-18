@@ -1,9 +1,9 @@
 import { TextDocument } from '../framework.mjs';
-import { Analysis, displayType, signature, signatures, globalSymbols, Symbol } from './semantic';
+import { Analysis, displayType, signature, signatures, globalSymbols, Symbol, typeName } from './semantic';
 import { Profile, operatorTable } from './profile';
 import { syntaxServices } from './parser';
 import { completionSearchRank } from './completion-search';
-import { isCompatible } from './types';
+import { isCompatible, sameParameters } from './types';
 import type { Token } from './ast';
 import { pendingBindings, clauseContinuation, finishCompletion } from './completion-edits';
 import { diagnostics } from './diagnostics';
@@ -356,6 +356,11 @@ export async function inspect(
       }
       const choices = signatures(symbol);
       for (const choice of choices) {
+        if (declarationName === 'OperatorDeclaration' && a.program.statements.some((declaration) =>
+          declaration.kind === 'operator' && declaration.name === choice.name &&
+          (declaration.nameSpan.end < replace.start || declaration.nameSpan.start > replace.end) &&
+          sameParameters(declaration.params.map(typeName), choice.params, a.compatibility)))
+          continue;
         if (expected && !domainPosition && !declarationName) {
           const actual =
             choice.kind === 'concept'

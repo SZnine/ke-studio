@@ -4,6 +4,7 @@ import { createLanguage } from "../studio/language/index";
 import { Store } from "../src/studio/store";
 import type { Language, LanguageEngine } from "../src/studio/engine";
 import { annotationName } from "../src/annotation-search";
+import { languageFingerprint } from "../src/studio/language-defaults";
 
 const disk = vi.hoisted(() => ({
   files: new Map<string, string>(),
@@ -377,6 +378,72 @@ it("still opens the workbench when a CO file needs repair", async () => {
   await expect(
     store.inspectEditor(input(state.editorContext)),
   ).rejects.toThrow();
+});
+it("validates and logs default language upgrades without replacing user libraries or questions", async () => {
+  let current = {
+    "semantic.ts": "old implementation",
+    "profile.ts": "custom rule",
+  };
+  engine.sources = vi.fn(async () => ({ ...current }));
+  engine.compile = vi.fn(async (files) => ({
+    files,
+    service: language,
+    revision: "updated",
+  }));
+  engine.commit = vi.fn(async (compiled) => {
+    current = compiled.files as typeof current;
+    engine.active = compiled;
+  });
+  const question = disk.files.get("banks/default/drafts/child/draft.json");
+  const library = disk.files.get("shared/libraries/child.keh");
+  await store.updateDefaultLanguage({
+    files: {
+      "semantic.ts": "fixed implementation",
+      "profile.ts": "default rule",
+    },
+    known: {
+      "semantic.ts": [languageFingerprint("old implementation")],
+      "profile.ts": [],
+    },
+  });
+  expect(current).toEqual({
+    "semantic.ts": "fixed implementation",
+    "profile.ts": "custom rule",
+  });
+  expect(engine.update).toEqual({
+    updated: ["semantic.ts"],
+    customized: ["profile.ts"],
+  });
+  expect(disk.files.get("banks/default/drafts/child/draft.json")).toBe(
+    question,
+  );
+  expect(disk.files.get("shared/libraries/child.keh")).toBe(library);
+  expect(disk.files.get("banks/default/history.jsonl")).toContain(
+    "同步发布版默认语言文件",
+  );
+  expect(
+    JSON.parse(disk.files.get("ke-workspace.json")!).languageDefaults[
+      "semantic.ts"
+    ],
+  ).toBe(languageFingerprint("fixed implementation"));
+});
+it("keeps the current language and baseline when an automatic update cannot compile", async () => {
+  engine.sources = vi.fn(async () => ({ "semantic.ts": "old" }));
+  engine.compile = vi.fn(async () => {
+    throw new Error("Cannot compile combined rules");
+  });
+  engine.commit = vi.fn();
+  const workspace = disk.files.get("ke-workspace.json");
+  await store.updateDefaultLanguage({
+    files: { "semantic.ts": "broken" },
+    known: { "semantic.ts": [languageFingerprint("old")] },
+  });
+  expect(engine.commit).not.toHaveBeenCalled();
+  expect(engine.update).toMatchObject({
+    updated: [],
+    error: "Cannot compile combined rules",
+  });
+  expect(disk.files.get("ke-workspace.json")).toBe(workspace);
 });
 
 it("shares analysis across cursor tools but isolates changed text and CO scopes", async () => {

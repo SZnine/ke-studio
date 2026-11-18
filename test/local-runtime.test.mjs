@@ -28,6 +28,7 @@ test("local server serves Pages paths, editor assets and WASM from the build", a
       "editor.worker.js",
       "framework.mjs",
       "initial.json",
+      "language-defaults.json",
       "build.json",
       "esbuild.wasm",
     ]) {

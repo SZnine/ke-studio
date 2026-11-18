@@ -2,6 +2,7 @@ import { globalSymbols, signatures, typeName, type Analysis } from './semantic';
 import { describeDeclaration } from './editor';
 import type { Profile } from './profile';
 import type { Declaration, Span } from './ast';
+import { isEquivalent, sameParameters } from './types';
 
 export interface AnnotationRequest {
   kind: 'concept' | 'operator';
@@ -79,18 +80,22 @@ export function annotate(source: string, request: AnnotationRequest, a: Analysis
     if (symbol?.kind !== 'operator') throw new Error('请选择当前 CO 中的算子。');
     const selected = signatures(symbol).find(
       (s) =>
-        (!request.params || JSON.stringify(s.params) === JSON.stringify(request.params)) &&
-        (!request.type || s.type === request.type)
+        (!request.params || sameParameters(s.params, request.params, a.compatibility)) &&
+        (!request.type || isEquivalent(s.type, request.type, a.compatibility))
     );
     if (!selected) throw new Error('算子签名已改变，请重新选择。');
-    for (const type of [...selected.params, selected.type])
-      if (type !== 'operator') includeType(type);
     existing = declarations.find(
       (d) =>
         d.kind === 'operator' &&
         d.name === request.name &&
-        JSON.stringify(d.params.map(typeName)) === JSON.stringify(selected.params)
+        sameParameters(d.params.map(typeName), selected.params, a.compatibility)
     );
+    if (existing?.type && !isEquivalent(typeName(existing.type), selected.type, a.compatibility))
+      throw new Error(`文档中已有 ${request.name}，请先统一其返回类型与库中的声明。`);
+    const required = existing?.type
+      ? [...existing.params.map(typeName), typeName(existing.type!)]
+      : [...selected.params, selected.type];
+    for (const type of required) if (type !== 'operator') includeType(type);
     declaration = `${p.operatorAliases[0]} ${describeDeclaration(selected, p)}${p.style.statement}`;
     if (!existing) append(1, declaration, request.name);
   }

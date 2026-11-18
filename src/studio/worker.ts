@@ -12,11 +12,13 @@ import { Assistant } from "./assistant";
 import { questionSummary } from "./questions";
 import { splitKe } from "./question-text";
 import type { ChatEvent } from "./language";
+import type { PublishedLanguage } from "./language-defaults";
 
 let store: Store,
   engine: LanguageEngine,
   assistant: Assistant,
   folder = "";
+let publishedLanguage: PublishedLanguage;
 const turns = new Set<Promise<unknown>>();
 async function openBank() {
   assistant?.stopAll();
@@ -26,6 +28,7 @@ async function openBank() {
   store = new Store("banks/" + local.activeBank, engine, local.id, folder);
   await store.initialize();
   await engine.refresh();
+  await store.updateDefaultLanguage(publishedLanguage);
   assistant = new Assistant(store);
   return store.workspace(
     (await store.domains()).find((d) => d.id !== "common")?.id || "common",
@@ -203,6 +206,9 @@ async function route(
           throw new Error("语言已更新，请重新读取后修改。");
         await store.saveLanguage(input.files, input.reason);
         break;
+      case "POST /api/language/update":
+        await store.updateDefaultLanguage(publishedLanguage);
+        break;
       case "PUT /api/library":
         if (typeof input.text === "string")
           await store.saveLibrary(
@@ -248,9 +254,21 @@ self.onmessage = async ({ data }) => {
     if (method === "MOUNT") {
       mount(data.handle);
       folder = data.handle.name;
-      const template = await fetch(assetUrl("initial.json")).then((r) =>
-        r.json(),
-      );
+      const [template, known] = await Promise.all([
+        fetch(assetUrl("initial.json")).then((r) => r.json()),
+        fetch(assetUrl("language-defaults.json")).then((r) => r.json()),
+      ]);
+      publishedLanguage = {
+        files: Object.fromEntries(
+          Object.entries(template as Record<string, string>)
+            .filter(([name]) => name.startsWith("shared/language/"))
+            .map(([name, text]) => [
+              name.slice("shared/language/".length),
+              text,
+            ]),
+        ),
+        known,
+      };
       await initializeWorkspace(template);
       self.postMessage({ id, result: await openBank() });
     } else
