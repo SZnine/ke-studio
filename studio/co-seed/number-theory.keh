@@ -1,0 +1,91 @@
+// 从该领域题库的 KE 标注抽取的 CO 声明。
+
+// @usage 1
+concept Equation;
+
+// @usage 5
+concept Integer <: Number;
+
+// @usage 3
+concept Integer;
+
+// @usage 1
+concept NaturalNumber <: Number;
+
+// @usage 6
+concept NaturalNumber;
+
+// @usage 2
+concept NumberList;
+
+// @usage 1
+concept PositiveInteger <: Number;
+
+// @usage 3
+concept PositiveInteger;
+
+// @usage 1
+concept PrimeNumber <: Number;
+
+// @usage 2
+concept Term;
+
+// @usage 9
+op count(arg1 : set(Concept)) : Number;
+
+// @usage 1
+op frac_sum(arg1 : PositiveInteger) : Number;
+
+// @usage 2
+op gcd(arg1 : NaturalNumber, arg2 : NaturalNumber) : NaturalNumber;
+
+// @usage 2
+op get_per_num(arg1 : Number) : NumberList;
+
+// @usage 1
+op is_coprime(arg1 : Number, arg2 : Number) : Bool;
+
+// @usage 1
+op is_infinityset(arg1 : set(Concept)) : Bool;
+
+// @usage 4
+op is_integer(arg1 : Number) : Bool;
+
+// @usage 6
+op is_integer_multiply(arg1 : Number, arg2 : Number) : Bool;
+
+// @usage 1
+op is_odd(arg1 : Integer) : Bool;
+
+// @usage 1
+op is_perfect_square(arg1 : NaturalNumber) : Bool;
+
+// @usage 1
+op is_perfect_square(arg1 : Number) : Bool;
+
+// @usage 1
+op is_prime(arg1 : NaturalNumber) : Bool;
+
+// @usage 1
+op is_prime(arg1 : Number) : Bool;
+
+// @usage 1
+op is_solution(arg1 : Equation, arg2 : set(Number)) : Bool;
+
+// @usage 1
+op list_square(arg1 : Term) : Number;
+
+// @usage 1
+op list_term(arg1 : NumberList, arg2 : NaturalNumber) : Term;
+
+// @usage 1
+op numberlist_length(arg1 : NumberList) : Number;
+
+// @usage 3
+op pow(arg1 : Number, arg2 : Number) : Number;
+
+// @usage 3
+op sum(arg1 : set(Concept), arg2 : operator) : Number;
+
+// @usage 2
+op term_number(arg1 : Term) : Number;

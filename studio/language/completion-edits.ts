@@ -65,14 +65,18 @@ export function finishCompletion(source: string, item: any, a: Analysis, p: Prof
   const indent = source.slice(lineStart, item.replace.start).match(/^[ \t]*/)?.[0] || '';
   const newline = source.match(/\r?\n/)?.[0] || '\n';
   const closing = role === 'condition' && next && p.surface.SetClose.includes(next.text);
-  let insert =
-    item.insert + suffix + separator + newline + (role === 'condition' ? indent || '  ' : indent);
-  if (closing) {
-    const beforeClose = source.slice(source.lastIndexOf('\n', next.start - 1) + 1, next.start);
-    insert += '$0' + newline + (/^[ \t]*$/.test(beforeClose) ? beforeClose : indent);
+  const gap = source.slice(end, next?.start ?? source.length);
+  const followingLine = gap.match(/^[ \t]*(\r?\n)([ \t]*)/);
+  const newClauseLine = !!(closing && (!followingLine || followingLine[0].length === gap.length));
+  const lineBreak = followingLine?.[1] ?? newline;
+  let insert = item.insert + suffix + separator + lineBreak;
+  if (newClauseLine) {
+    insert += (indent || '  ') + '$0' + lineBreak + (followingLine?.[2] ?? indent);
+  } else {
+    insert += followingLine?.[2] ?? (role === 'condition' ? indent || '  ' : indent);
   }
-  const gapEnd = next?.start ?? source.length;
-  if (!source.slice(end, gapEnd).trim()) end = gapEnd;
+  // Reuse one line break, preserving any additional blank lines and their indentation.
+  end += followingLine?.[0].length ?? (gap.trim() ? 0 : gap.length);
   // Completion ranges must stay on the cursor's line; remove following whitespace separately.
   const lineEnd = source.slice(item.replace.start).search(/[\r\n]/);
   if (lineEnd >= 0 && end > item.replace.start + lineEnd) {
@@ -82,7 +86,7 @@ export function finishCompletion(source: string, item: any, a: Analysis, p: Prof
   }
   Object.assign(item, {
     insert,
-    snippet: !!closing,
+    snippet: newClauseLine,
     suggest: false,
     finished: true,
     replace: { ...item.replace, end }

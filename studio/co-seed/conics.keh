@@ -1,0 +1,340 @@
+// 从该领域题库的 KE 标注抽取的 CO 声明。
+
+// @usage 1
+concept AngelMeasure <: Quantity;
+
+// @usage 1
+concept AngleMeasure <: Quantity;
+
+// @usage 6
+concept Circle <: Curve;
+
+// @usage 4
+concept Circle;
+
+// @usage 2
+concept Curvel;
+
+// @usage 1
+concept Degree <: Unit;
+
+// @usage 1
+concept Degree;
+
+// @usage 14
+concept Ellipse <: Curve;
+
+// @usage 1
+concept Ellipse <: Curvel;
+
+// @usage 11
+concept Ellipse;
+
+// @usage 15
+concept Hyperbola <: Curve;
+
+// @usage 1
+concept Hyperbola <: Curvel;
+
+// @usage 12
+concept Hyperbola;
+
+// @usage 30
+concept Line <: Curve;
+
+// @usage 1
+concept Line <: Curvel;
+
+// @usage 13
+concept Line;
+
+// @usage 2
+concept LineSegment;
+
+// @usage 13
+concept Parabola <: Curve;
+
+// @usage 7
+concept Parabola;
+
+// @usage 2
+concept Polygon;
+
+// @usage 2
+concept Quantity;
+
+// @usage 5
+concept Real <: Number;
+
+// @usage 6
+concept Triangle;
+
+// @usage 3
+concept Unit;
+
+// @usage 1
+op angle_measure(arg1 : Angle) : AngelMeasure;
+
+// @usage 1
+op angle_measure(arg1 : Angle) : AngleMeasure;
+
+// @usage 1
+op angle_measure(arg1 : Angle) : Degree;
+
+// @usage 3
+op angle_of(arg1 : Point, arg2 : Point, arg3 : Point) : Angle;
+
+// @usage 1
+op area(arg1 : Polygon) : Number;
+
+// @usage 2
+op area(arg1 : Triangle) : Number;
+
+// @usage 4
+op center(arg1 : Circle) : Point;
+
+// @usage 2
+op center(arg1 : Curve) : Point;
+
+// @usage 1
+op center(arg1 : Ellipse) : Point;
+
+// @usage 1
+op coordinate(arg1 : Real, arg2 : Real) : Coordinate;
+
+// @usage 3
+op count(arg1 : set(Concept)) : Number;
+
+// @usage 12
+op curve_expression(arg1 : Curve) : Expression;
+
+// @usage 1
+op curve_expression(arg1 : Hyperbola) : Expression;
+
+// @usage 1
+op curvel_expression(arg1 : Curvel) : Expression;
+
+// @usage 1
+op directrix(arg1 : Ellipse) : set(Line);
+
+// @usage 1
+op directrix(arg1 : Parabola) : Line;
+
+// @usage 1
+op dot(arg1 : Vector, arg2 : Vector) : Number;
+
+// @usage 2
+op eccentricity(arg1 : Curve) : Real;
+
+// @usage 1
+op eccentricity(arg1 : Curvel) : Real;
+
+// @usage 3
+op eccentricity(arg1 : Ellipse) : Number;
+
+// @usage 1
+op eccentricity(arg1 : Ellipse) : Real;
+
+// @usage 5
+op eccentricity(arg1 : Hyperbola) : Number;
+
+// @usage 2
+op ellipse_standard_expression(arg1 : Number, arg2 : Number) : Expression;
+
+// @usage 1
+op focus(arg1 : Curve) : set(Point);
+
+// @usage 1
+op focus(arg1 : Curvel) : set(Point);
+
+// @usage 1
+op focus(arg1 : Hyperbola) : set(Point);
+
+// @usage 4
+op focus(arg1 : Parabola) : Point;
+
+// @usage 1
+op get_a_directrix(arg1 : Location, arg2 : Ellipse) : Line;
+
+// @usage 1
+op get_a_directrix(arg1 : Location, arg2 : Hyperbola) : Line;
+
+// @usage 1
+op get_a_directrix(arg1 : Location, arg2 : Parabola) : Line;
+
+// @usage 7
+op get_a_focus(arg1 : Location, arg2 : Curve) : Point;
+
+// @usage 6
+op get_a_focus(arg1 : Location, arg2 : Ellipse) : Point;
+
+// @usage 8
+op get_a_focus(arg1 : Location, arg2 : Hyperbola) : Point;
+
+// @usage 1
+op get_a_part(arg1 : Location, arg2 : Hyperbola) : Curve;
+
+// @usage 1
+op get_a_vertex(arg1 : Location, arg2 : Curve) : Point;
+
+// @usage 37
+op get_coordinate(arg1 : Point) : Coordinate;
+
+// @usage 1
+op get_cooridate(arg1 : Point) : Coordinate;
+
+// @usage 43
+op get_expression(arg1 : Curve) : Expression;
+
+// @usage 1
+op get_focus(arg1 : Hyperbola) : set(Point);
+
+// @usage 1
+op get_tangent_point(arg1 : Circle, arg2 : Line) : Point;
+
+// @usage 1
+op get_x_coordinate(arg1 : Coordinate) : Number;
+
+// @usage 3
+op hyperbola_standard_expression(arg1 : Number, arg2 : Number) : Expression;
+
+// @usage 1
+op intersection(arg1 : Curvel, arg2 : Curvel) : set(Point);
+
+// @usage 5
+op is_perpendicular(arg1 : Line, arg2 : Line) : Bool;
+
+// @usage 2
+op is_tangent(arg1 : Curve, arg2 : Curve) : Bool;
+
+// @usage 7
+op is_tangent(arg1 : Line, arg2 : Circle) : Bool;
+
+// @usage 3
+op is_through(arg1 : Line, arg2 : Point) : Bool;
+
+// @usage 1
+op left_directrix(arg1 : Hyperbola) : Line;
+
+// @usage 1
+op left_focus(arg1 : Curve) : Point;
+
+// @usage 1
+op left_focus(arg1 : Curvel) : Point;
+
+// @usage 1
+op left_focus(arg1 : Ellipse) : Point;
+
+// @usage 21
+op length(arg1 : Point, arg2 : Point) : Number;
+
+// @usage 10
+op length(arg1 : Point, arg2 : Point) : Real;
+
+// @usage 2
+op line_through(arg1 : Point, arg2 : Point) : Line;
+
+// @usage 1
+op max(arg1 : Number) : Number;
+
+// @usage 3
+op mid_point(arg1 : Point, arg2 : Point) : Point;
+
+// @usage 5
+op midpoint(arg1 : Point, arg2 : Point) : Point;
+
+// @usage 1
+op min(arg1 : set(Real)) : Real;
+
+// @usage 1
+op norm(arg1 : Vector) : Number;
+
+// @usage 1
+op on_curve(arg1 : Point, arg2 : Curve) : Bool;
+
+// @usage 1
+op on_right_hyperbola(arg1 : Point, arg2 : Hyperbola) : Bool;
+
+// @usage 1
+op pass_through(arg1 : Line, arg2 : Point) : Bool;
+
+// @usage 1
+op perimeter(arg1 : Polygon) : Number;
+
+// @usage 1
+op perimeter(arg1 : Triangle) : Real;
+
+// @usage 1
+op perpendicular_bisector(arg1 : Point, arg2 : Point) : Line;
+
+// @usage 1
+op perpendicular_line(arg1 : Line) : Line;
+
+// @usage 1
+op point_distance(arg1 : Point, arg2 : Point) : Number;
+
+// @usage 1
+op point_line_distance(arg1 : Point, arg2 : Line) : Real;
+
+// @usage 44
+op point_on_curve(arg1 : Point, arg2 : Curve) : Bool;
+
+// @usage 1
+op radius(arg1 : Circle) : Real;
+
+// @usage 2
+op right_focus(arg1 : Curve) : Point;
+
+// @usage 1
+op right_focus(arg1 : Curvel) : Point;
+
+// @usage 1
+op right_focus(arg1 : Ellipse) : Point;
+
+// @usage 2
+op scale(arg1 : Real, arg2 : Vector) : Vector;
+
+// @usage 4
+op scale(arg1 : Vector, arg2 : Number) : Vector;
+
+// @usage 3
+op sqrt(arg1 : Real) : Real;
+
+// @usage 42
+op sympy_expression(arg1 : String) : Expression;
+
+// @usage 1
+op to_co(arg1 : Circle) : Point;
+
+// @usage 35
+op to_coordinate(arg1 : Number, arg2 : Number) : Coordinate;
+
+// @usage 1
+op to_cooridate(arg1 : Number, arg2 : Number) : Coordinate;
+
+// @usage 1
+op triangle(arg1 : Point, arg2 : Point, arg3 : Point) : Triangle;
+
+// @usage 1
+op unit(arg1 : Number, arg2 : Unit) : Angle;
+
+// @usage 1
+op unit(arg1 : Number, arg2 : Unit) : Concept;
+
+// @usage 2
+op unit(arg1 : Number, arg2 : Unit) : Quantity;
+
+// @usage 1
+op vertex(arg1 : Curvel) : set(Point);
+
+// @usage 4
+op x_coordinate(arg1 : Point) : Real;
+
+// @usage 1
+op x_cooridate(arg1 : Point) : Real;
+
+// @usage 3
+op y_coordinate(arg1 : Point) : Real;
+
+// @usage 1
+op y_cooridate(arg1 : Point) : Real;

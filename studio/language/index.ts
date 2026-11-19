@@ -1,9 +1,12 @@
 import {
   AbstractAstReflection,
+  DefaultTokenBuilder,
   EmptyFileSystem,
   inject,
-  loadGrammarFromJson
+  loadGrammarFromJson,
+  type GrammarAST
 } from 'langium';
+import type { TokenType } from 'chevrotain';
 import { createDefaultModule, createDefaultSharedModule } from 'langium/lsp';
 import type { CompiledGrammar } from '../compile-grammar.mjs';
 import { initializeSyntax, parse } from './parser';
@@ -17,6 +20,24 @@ import { annotate, moveDeclaration, type AnnotationRequest } from './annotation'
 class PublishedAstReflection extends AbstractAstReflection {
   constructor(readonly types: CompiledGrammar['types']) {
     super();
+  }
+}
+
+class KeTokenBuilder extends DefaultTokenBuilder {
+  protected override findLongerAlt(keyword: GrammarAST.Keyword, tokens: TokenType[]) {
+    const alternatives = super.findLongerAlt(keyword, tokens);
+    const identifier = tokens.find((token) => token.name === 'ID');
+    // Langium handles Unicode terminal regexes as pattern functions. Its default
+    // keyword check only looks for longer alternatives backed by regular expressions.
+    if (
+      identifier &&
+      typeof identifier.PATTERN === 'function' &&
+      identifier.PATTERN(keyword.value, 0, [], {})?.[0] === keyword.value &&
+      !alternatives.includes(identifier)
+    ) {
+      alternatives.push(identifier);
+    }
+    return alternatives;
   }
 }
 
@@ -35,7 +56,7 @@ export function createLanguageFromCompiled(
       caseInsensitive: false,
       mode: 'production' as const
     }),
-    parser: { ParserConfig: () => ({}) }
+    parser: { ParserConfig: () => ({}), TokenBuilder: () => new KeTokenBuilder() }
   });
   shared.ServiceRegistry.register(services);
   initializeSyntax(services);

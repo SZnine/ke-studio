@@ -16,6 +16,10 @@ document.querySelector("button")!.onclick = async () => {
     let state = await connect(folder);
     const revision = state.language.revision;
     check(revision && state.language.tokenTypes.length, "Published language is available at mount");
+    check(
+      state.starterLibraries.length === 4 && state.starterLibraries.every((source) => source.entries.length > 0),
+      "All four released CO sources are available",
+    );
     const conic = state.domains.find((d) => d.name.includes("圆锥"))!;
     state = await api("/api/domains", "POST", { name: "父领域" });
     const parent = state.domain.id;

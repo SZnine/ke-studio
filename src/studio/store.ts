@@ -128,10 +128,20 @@ export class Store {
       libraries.filter((lib) => lib.id === key),
     );
     const other = libraries.filter((lib) => !preference.includes(lib.id));
+    const starterLibraries = this.engine.active?.starterLibraries ?? [];
+    const topic = scope ?? id;
+    const topicSeed = starterLibraries.find((lib) => lib.domain === topic);
     const usedEntries = this.catalog.entries;
     const scopedEntries = scoped.flatMap((lib) => lib.entries);
     const fallback = supplementalCo(
-      [other.flatMap((lib) => lib.entries), usedEntries],
+      [
+        other.flatMap((lib) => lib.entries),
+        topicSeed?.entries ?? [],
+        starterLibraries
+          .filter((lib) => lib !== topicSeed)
+          .flatMap((lib) => lib.entries),
+        usedEntries,
+      ],
       scopedEntries,
       coreEntries,
     );
@@ -148,6 +158,7 @@ export class Store {
       language: await this.engine.state(),
       editorContext: this.prepareEditorContext(scoped, usage, fallback),
       libraries,
+      starterLibraries,
       usedEntries,
       editorEntries: [...coreEntries, ...fallback, ...scopedEntries],
       questions: questions.map(questionSummary),

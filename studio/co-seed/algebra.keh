@@ -1,0 +1,277 @@
+// 从该领域题库的 KE 标注抽取的 CO 声明。
+
+// @usage 3
+concept Equation;
+
+// @usage 10
+concept Function;
+
+// @usage 8
+concept NaturalNumber <: Number;
+
+// @usage 1
+concept NaturalNumber;
+
+// @usage 1
+concept Non_negative <: Real;
+
+// @usage 7
+concept NumberList;
+
+// @usage 1
+concept NumberSequence;
+
+// @usage 1
+concept Positive <: Natural;
+
+// @usage 1
+concept PositiveInteger <: Real;
+
+// @usage 34
+concept Real <: Number;
+
+// @usage 2
+concept RealFunction <: Function;
+
+// @usage 1
+concept RealFunction;
+
+// @usage 6
+concept Term;
+
+// @usage 1
+op a(arg1 : Natural) : Real;
+
+// @usage 1
+op a(arg1 : Positive) : Positive;
+
+// @usage 4
+op abs(arg1 : Real) : Real;
+
+// @usage 3
+op apply(arg1 : Function, arg2 : Concept) : Real;
+
+// @usage 4
+op apply(arg1 : Function, arg2 : Real) : Real;
+
+// @usage 1
+op apply(arg1 : Real, arg2 : RealFunction) : Real;
+
+// @usage 1
+op apply(arg1 : RealFunction, arg2 : Real) : Real;
+
+// @usage 2
+op arrange(arg1 : NumberList) : set(NumberList);
+
+// @usage 1
+op coefficient(arg1 : Number) : Real;
+
+// @usage 5
+op cos(arg1 : Real) : Real;
+
+// @usage 1
+op cos_sum(arg1 : Term, arg2 : NaturalNumber, arg3 : Real) : Number;
+
+// @usage 1
+op cosine_term(arg1 : NaturalNumber) : Real;
+
+// @usage 4
+op count(arg1 : set(Concept)) : Number;
+
+// @usage 5
+op count(arg1 : set(Real)) : Number;
+
+// @usage 1
+op count(arg1 : set(tuple(Real, Real))) : Number;
+
+// @usage 1
+op f(arg1 : Real, arg2 : Real, arg3 : Real) : Real;
+
+// @usage 1
+op f(arg1 : Real) : Real;
+
+// @usage 1
+op harmonic_term(arg1 : NaturalNumber) : Real;
+
+// @usage 1
+op indices(arg1 : Positive) : set(Positive);
+
+// @usage 2
+op is_arithmetic_sequence(arg1 : NumberList) : Bool;
+
+// @usage 1
+op is_constant(arg1 : Function) : Bool;
+
+// @usage 1
+op is_distinct(arg1 : NumberSequence) : Bool;
+
+// @usage 1
+op is_equal(arg1 : Concept, arg2 : Concept) : Bool;
+
+// @usage 3
+op is_integer(arg1 : Number) : Bool;
+
+// @usage 1
+op is_integer(arg1 : Real) : Bool;
+
+// @usage 1
+op is_integer_multiple(arg1 : Number, arg2 : Number) : Bool;
+
+// @usage 2
+op is_integer_multiple(arg1 : Real, arg2 : Real) : Bool;
+
+// @usage 2
+op is_nondecreasing(arg1 : NumberList) : Bool;
+
+// @usage 2
+op is_nonincreasing(arg1 : NumberList) : Bool;
+
+// @usage 2
+op is_periodic(arg1 : Function) : Bool;
+
+// @usage 1
+op is_positive_integer_list(arg1 : NumberList) : Bool;
+
+// @usage 1
+op left_term(arg1 : PositiveInteger, arg2 : NumberSequence) : Real;
+
+// @usage 2
+op limit(arg1 : Function, arg2 : Real) : Real;
+
+// @usage 1
+op list_abs_diff(arg1 : tuple(NaturalNumber, NaturalNumber)) : Real;
+
+// @usage 1
+op list_abs_diff(arg1 : tuple(Term, Term)) : Real;
+
+// @usage 1
+op list_pow_diff(arg1 : tuple(NaturalNumber, NaturalNumber)) : Real;
+
+// @usage 1
+op list_pow_diff(arg1 : tuple(Term, Term)) : Real;
+
+// @usage 1
+op list_square(arg1 : Term, arg2 : Term) : Number;
+
+// @usage 1
+op list_square(arg1 : Term, arg2 : Term) : Real;
+
+// @usage 1
+op list_term(arg1 : NumberList, arg2 : NaturalNumber) : Real;
+
+// @usage 6
+op list_term(arg1 : NumberList, arg2 : NaturalNumber) : Term;
+
+// @usage 1
+op min(arg1 : set(Real)) : Real;
+
+// @usage 7
+op numberlist_length(arg1 : NumberList) : NaturalNumber;
+
+// @usage 1
+op numberlist_of(arg1 : Number) : NumberList;
+
+// @usage 1
+op original_term(arg1 : Natural) : Number;
+
+// @usage 1
+op original_term(arg1 : Positive) : Number;
+
+// @usage 1
+op perm(arg1 : Natural) : Natural;
+
+// @usage 1
+op permuted_term(arg1 : Natural) : Number;
+
+// @usage 1
+op permuted_term(arg1 : Positive) : Number;
+
+// @usage 1
+op positive_periods(arg1 : RealFunction) : set(Real);
+
+// @usage 7
+op pow(arg1 : Number, arg2 : Number) : Number;
+
+// @usage 1
+op pow(arg1 : Number, arg2 : Number) : Real;
+
+// @usage 1
+op pow(arg1 : Real, arg2 : Real) : Real;
+
+// @usage 1
+op power(arg1 : Number, arg2 : Number) : Number;
+
+// @usage 1
+op power(arg1 : Real, arg2 : Real) : Real;
+
+// @usage 3
+op real_roots(arg1 : Equation) : set(Real);
+
+// @usage 1
+op real_solutions(arg1 : Expression, arg2 : Real) : set(Real);
+
+// @usage 1
+op recurrence_points(arg1 : RealFunction, arg2 : Real) : set(Real);
+
+// @usage 1
+op right_term(arg1 : PositiveInteger) : Real;
+
+// @usage 2
+op roots(arg1 : Real) : set(Real);
+
+// @usage 1
+op sequence_term(arg1 : NumberSequence, arg2 : PositiveInteger) : PositiveInteger;
+
+// @usage 4
+op sin(arg1 : Real) : Real;
+
+// @usage 3
+op sqrt(arg1 : Number) : Real;
+
+// @usage 4
+op sqrt(arg1 : Real) : Real;
+
+// @usage 2
+op sum(arg1 : set(Any), arg2 : operator) : Real;
+
+// @usage 7
+op sum(arg1 : set(Concept), arg2 : operator) : Number;
+
+// @usage 1
+op sum(arg1 : set(NaturalNumber), arg2 : Function) : Real;
+
+// @usage 1
+op sum(arg1 : set(PositiveInteger), arg2 : Function) : Real;
+
+// @usage 1
+op term_1(arg1 : Non_negative, arg2 : Non_negative, arg3 : Non_negative, arg4 : Non_negative, arg5 : Non_negative) : Number;
+
+// @usage 1
+op term_2(arg1 : Non_negative, arg2 : Non_negative, arg3 : Non_negative, arg4 : Non_negative, arg5 : Non_negative) : Number;
+
+// @usage 1
+op term_3(arg1 : Non_negative, arg2 : Non_negative, arg3 : Non_negative, arg4 : Non_negative, arg5 : Non_negative) : Number;
+
+// @usage 1
+op term_number(arg1 : Term) : Number;
+
+// @usage 5
+op term_number(arg1 : Term) : Real;
+
+// @usage 1
+op term_value(arg1 : Concept) : Real;
+
+// @usage 1
+op unique(arg1 : NumberList) : Bool;
+
+// @usage 1
+op weighted_term(arg1 : tuple(Term, NaturalNumber)) : Real;
+
+// @usage 1
+op x(arg1 : Natural) : Real;
+
+// @usage 1
+op y(arg1 : Natural) : Real;
+
+// @usage 1
+op z(arg1 : Natural) : Real;

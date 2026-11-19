@@ -141,20 +141,18 @@ export function createEditor(element: HTMLElement, save: () => void) {
       completionSession.typed(event.browserEvent.key);
   });
   editor.onDidCompositionStart(() => completionSession.resume());
-  editor.addAction({
-    id: "ke.finishCompletion",
-    label: "完成声明",
-    run: dismissCompletions,
+  const finishCompletionId = editor.addCommand(0, dismissCompletions);
+  const completeNextId = editor.addCommand(0, () => {
+    if (completionSession.dismissed) return;
+    editor.trigger("ke", "editor.action.triggerParameterHints", {});
+    editor.trigger("ke", "editor.action.triggerSuggest", {});
   });
-  editor.addAction({
-    id: "ke.completeNext",
-    label: "继续补全",
-    run() {
-      if (completionSession.dismissed) return;
-      editor.trigger("ke", "editor.action.triggerParameterHints", {});
-      editor.trigger("ke", "editor.action.triggerSuggest", {});
-    },
-  });
+  const finishCompletion = finishCompletionId
+    ? { id: finishCompletionId, title: "完成声明" }
+    : undefined;
+  const completeNext = completeNextId
+    ? { id: completeNextId, title: "继续补全" }
+    : undefined;
   let manualCompletion = false;
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => {
     completionSession.resume();
@@ -235,7 +233,8 @@ export function createEditor(element: HTMLElement, save: () => void) {
       monaco.languages.registerCompletionItemProvider("ke", {
         triggerCharacters,
         async provideCompletionItems(_, position, _context, token) {
-          if (completionSession.dismissed) return { suggestions: [] };
+          if (options.enabled === false || completionSession.dismissed)
+            return { suggestions: [] };
           const request = completionSession.revision;
           const version = model.getVersionId(),
             context = state.editorContext;
@@ -282,9 +281,9 @@ export function createEditor(element: HTMLElement, save: () => void) {
                 text: edit.text,
               })),
               command: s.finished
-                ? { id: "ke.finishCompletion", title: "完成声明" }
+                ? finishCompletion
                 : s.suggest
-                  ? { id: "ke.completeNext", title: "继续补全" }
+                  ? completeNext
                   : s.kind === "operator" && s.snippet
                     ? {
                         id: "editor.action.triggerParameterHints",
@@ -454,6 +453,9 @@ export function createEditor(element: HTMLElement, save: () => void) {
     setOptions(value: any) {
       options = value;
       cache.clear();
+      completionSession.resume();
+      manualCompletion = false;
+      editor.trigger("ke", "hideSuggestWidget", {});
     },
     setWorkspace(value: Workspace, loadDocument = false) {
       const newLanguage =

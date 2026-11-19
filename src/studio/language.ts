@@ -10,6 +10,12 @@ export interface LibrarySource extends Domain {
   text: string;
   entries: Entry[];
 }
+export interface StarterLibrary {
+  id: string;
+  name: string;
+  domain: string;
+  entries: Entry[];
+}
 export interface LanguageState {
   revision: string;
   version: string;
@@ -33,6 +39,7 @@ export interface Workspace {
   /** Identifies the prepared in-memory CO scope used by the editor. */
   editorContext: string;
   libraries: LibrarySource[];
+  starterLibraries: StarterLibrary[];
   usedEntries: Entry[];
   editorEntries: Entry[];
   questions: QuestionSummary[];

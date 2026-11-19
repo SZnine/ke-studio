@@ -1,8 +1,9 @@
 import { createLanguageFromCompiled } from "../../studio/language/index";
-import type { LanguageState } from "./language";
+import type { LanguageState, StarterLibrary } from "./language";
 
 type LanguageArtifact = Parameters<typeof createLanguageFromCompiled>[0] & {
   revision: string;
+  starter?: (Omit<StarterLibrary, "entries"> & { text: string })[];
 };
 declare const __KE_LANGUAGE__: LanguageArtifact;
 
@@ -10,6 +11,7 @@ export type Language = ReturnType<typeof createLanguageFromCompiled>;
 export interface LoadedLanguage {
   revision: string;
   service: Language;
+  starterLibraries?: StarterLibrary[];
 }
 
 let published: LoadedLanguage | undefined;
@@ -21,9 +23,18 @@ export class LanguageEngine {
   load() {
     if (!published) {
       const artifact = __KE_LANGUAGE__;
+      const service = createLanguageFromCompiled(artifact);
       published = {
         revision: artifact.revision,
-        service: createLanguageFromCompiled(artifact),
+        service,
+        starterLibraries: (artifact.starter ?? []).map(
+          ({ text, ...source }) => ({
+            ...source,
+            entries: service
+              .readHeader(text, source.id)
+              .entries.map(({ span, ...entry }) => entry),
+          }),
+        ),
       };
     }
     this.active = published;

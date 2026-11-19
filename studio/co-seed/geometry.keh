@@ -1,0 +1,442 @@
+// 从该领域题库的 KE 标注抽取的 CO 声明。
+
+// @usage 3
+concept AngleMeasure <: Quantity;
+
+// @usage 1
+concept AngleMeasure;
+
+// @usage 2
+concept Arc <: Curve;
+
+// @usage 9
+concept Circle <: Curve;
+
+// @usage 8
+concept Circle;
+
+// @usage 1
+concept Cone;
+
+// @usage 1
+concept Convex_quadrilateral <: Polygon;
+
+// @usage 1
+concept Cylinder;
+
+// @usage 1
+concept Disk;
+
+// @usage 1
+concept IsoscelesTriangle <: Triangle;
+
+// @usage 14
+concept Line <: Curve;
+
+// @usage 10
+concept Line;
+
+// @usage 7
+concept LineSegment <: Line;
+
+// @usage 10
+concept LineSegment;
+
+// @usage 1
+concept NaturalNumber <: Number;
+
+// @usage 1
+concept NumberList;
+
+// @usage 2
+concept Parallelogram <: Polygon;
+
+// @usage 2
+concept Plane;
+
+// @usage 22
+concept Polygon;
+
+// @usage 5
+concept Quadrilateral <: Polygon;
+
+// @usage 1
+concept Quadrilateral;
+
+// @usage 4
+concept Quantity;
+
+// @usage 1
+concept Ray <: Line;
+
+// @usage 1
+concept Segment;
+
+// @usage 1
+concept Sphere;
+
+// @usage 3
+concept Trajectory;
+
+// @usage 12
+concept Triangle <: Polygon;
+
+// @usage 14
+concept Triangle;
+
+// @usage 3
+concept Unit;
+
+// @usage 1
+op altitude(arg1 : Triangle, arg2 : Point) : LineSegment;
+
+// @usage 3
+op angle_bisector(arg1 : Angle) : Line;
+
+// @usage 4
+op angle_measure(arg1 : Angle) : AngleMeasure;
+
+// @usage 14
+op angle_of(arg1 : Point, arg2 : Point, arg3 : Point) : Angle;
+
+// @usage 1
+op angle_of(arg1 : Point, arg2 : Point, arg3 : Point) : Bool;
+
+// @usage 1
+op angle_of_degree(arg1 : Point, arg2 : Point, arg3 : Point) : Number;
+
+// @usage 1
+op angle_to_side(arg1 : Triangle, arg2 : Angle) : LineSegment;
+
+// @usage 1
+op arc_midpoint(arg1 : Arc) : Point;
+
+// @usage 2
+op arcs_of(arg1 : Circle, arg2 : Point, arg3 : Point) : set(Arc);
+
+// @usage 1
+op area(arg1 : Triangle) : Number;
+
+// @usage 2
+op between(arg1 : Point, arg2 : Point, arg3 : Point) : Bool;
+
+// @usage 1
+op boundary_side_length(arg1 : Polygon, arg2 : Number) : Number;
+
+// @usage 1
+op boundary_vertex(arg1 : Polygon, arg2 : Number) : Point;
+
+// @usage 1
+op c_of(arg1 : Point) : Point;
+
+// @usage 4
+op center(arg1 : Circle) : Point;
+
+// @usage 1
+op circle(arg1 : Point, arg2 : Number) : Circle;
+
+// @usage 1
+op circle_inscribed_linesegment(arg1 : Circle, arg2 : LineSegment) : Point;
+
+// @usage 4
+op circle_of(arg1 : Point, arg2 : Number) : Circle;
+
+// @usage 1
+op circle1(arg1 : Point) : Circle;
+
+// @usage 1
+op circle2(arg1 : Point) : Circle;
+
+// @usage 2
+op circumcircle(arg1 : Triangle) : Circle;
+
+// @usage 1
+op cone_base(arg1 : Cone) : Disk;
+
+// @usage 1
+op consecutive_sides(arg1 : Polygon) : set(LineSegment);
+
+// @usage 1
+op consecutive_sides(arg1 : Polygon) : set(set(LineSegment));
+
+// @usage 1
+op cos(arg1 : Angle) : Number;
+
+// @usage 1
+op cos(arg1 : AngleMeasure) : Number;
+
+// @usage 6
+op count(arg1 : set(Concept)) : Number;
+
+// @usage 1
+op cylinder_base(arg1 : Cylinder) : Disk;
+
+// @usage 1
+op degree(arg1 : Number) : AngleMeasure;
+
+// @usage 1
+op Degree(arg1 : Point, arg2 : Point, arg3 : Point) : Number;
+
+// @usage 1
+op diameter_circle(arg1 : LineSegment) : Circle;
+
+// @usage 1
+op disk_plane(arg1 : Disk) : Plane;
+
+// @usage 1
+op f_of(arg1 : Point) : Point;
+
+// @usage 5
+op foot_of_perpendicular(arg1 : Point, arg2 : Line) : Point;
+
+// @usage 5
+op get_angle(arg1 : Angle) : Number;
+
+// @usage 1
+op get_angle(arg1 : Point, arg2 : Point, arg3 : Point) : Angle;
+
+// @usage 1
+op get_cone_volume(arg1 : Cone) : Number;
+
+// @usage 1
+op get_convex_quadrilateral(arg1 : Point, arg2 : Point, arg3 : Point, arg4 : Point) : Convex_quadrilateral;
+
+// @usage 1
+op get_cylinder_volume(arg1 : Cylinder) : Number;
+
+// @usage 1
+op get_half_angle(arg1 : Cone) : Angle;
+
+// @usage 1
+op get_hight_triangle(arg1 : Point, arg2 : Triangle) : Number;
+
+// @usage 1
+op get_lines(arg1 : ClosedFigure) : set(Line);
+
+// @usage 1
+op get_tangent_point(arg1 : Circle, arg2 : Line) : Point;
+
+// @usage 1
+op get_trajectory(arg1 : set(Point)) : Trajectory;
+
+// @usage 2
+op incircle(arg1 : Triangle) : Circle;
+
+// @usage 1
+op inscribed_circle(arg1 : Polygon) : Circle;
+
+// @usage 1
+op internally_tangent_to_semicircle(arg1 : Circle, arg2 : Arc) : Bool;
+
+// @usage 2
+op is_acute(arg1 : Triangle) : Bool;
+
+// @usage 4
+op is_acute_angle(arg1 : Angle) : Bool;
+
+// @usage 2
+op is_angle_bisector(arg1 : Line, arg2 : Angle) : Bool;
+
+// @usage 1
+op is_circle_inscribed_figure(arg1 : Polygon) : Bool;
+
+// @usage 4
+op is_collinear(arg1 : set(Point)) : Bool;
+
+// @usage 3
+op is_concurrent(arg1 : set(Line)) : Bool;
+
+// @usage 2
+op is_convex(arg1 : Polygon) : Bool;
+
+// @usage 2
+op is_covered_by(arg1 : Polygon, arg2 : set(Circle)) : Bool;
+
+// @usage 2
+op is_cyclic(arg1 : Polygon) : Bool;
+
+// @usage 1
+op is_cylinder_circumscribed_about_sphere(arg1 : Cylinder, arg2 : Sphere) : Bool;
+
+// @usage 1
+op is_diameter(arg1 : LineSegment, arg2 : Circle) : Bool;
+
+// @usage 1
+op is_diameter(arg1 : LineSegment) : Circle;
+
+// @usage 1
+op is_disk_contained_in_disk(arg1 : Disk, arg2 : Disk) : Bool;
+
+// @usage 2
+op is_equiangular(arg1 : Polygon) : Bool;
+
+// @usage 2
+op is_equilateral(arg1 : Polygon) : Bool;
+
+// @usage 1
+op is_inscribed_in(arg1 : Circle, arg2 : Polygon) : Bool;
+
+// @usage 2
+op is_integer(arg1 : Number) : Bool;
+
+// @usage 2
+op is_isosceles(arg1 : Triangle) : Bool;
+
+// @usage 1
+op is_Isosceles_triangle(arg1 : Triangle) : Bool;
+
+// @usage 1
+op is_minor_arc(arg1 : Arc) : Bool;
+
+// @usage 1
+op is_nonincreasing(arg1 : NumberList) : Bool;
+
+// @usage 1
+op is_on_Line(arg1 : Point, arg2 : Point, arg3 : Point) : Bool;
+
+// @usage 4
+op is_parallel(arg1 : Line, arg2 : Line) : Bool;
+
+// @usage 1
+op is_perpendicular(arg1 : Line, arg2 : Line) : Bool;
+
+// @usage 1
+op is_Point(arg1 : Triangle, arg2 : Point, arg3 : Point, arg4 : Point) : Bool;
+
+// @usage 1
+op is_sphere_inscribed_in_cone(arg1 : Sphere, arg2 : Cone) : Bool;
+
+// @usage 1
+op is_split_quadrilateral(arg1 : Quadrilateral, arg2 : set(Quadrilateral)) : Bool;
+
+// @usage 1
+op is_split_shapes(arg1 : Polygon, arg2 : set(Polygon)) : Bool;
+
+// @usage 1
+op is_square(arg1 : Quadrilateral) : Bool;
+
+// @usage 1
+op is_tangent(arg1 : Curve, arg2 : Curve) : Bool;
+
+// @usage 5
+op is_tangent(arg1 : Line, arg2 : Circle) : Bool;
+
+// @usage 1
+op is_tangent_to_segment(arg1 : LineSegment, arg2 : Circle) : Bool;
+
+// @usage 8
+op length(arg1 : Point, arg2 : Point) : Number;
+
+// @usage 1
+op length(arg1 : Point, arg2 : Point) : Real;
+
+// @usage 1
+op Length(arg1 : Point, arg2 : Point) : Number;
+
+// @usage 1
+op line_tangent_circle(arg1 : Line, arg2 : Circle) : Bool;
+
+// @usage 1
+op m(arg1 : Point, arg2 : Point, arg3 : Point) : Number;
+
+// @usage 1
+op m(arg1 : Triangle) : Number;
+
+// @usage 1
+op main_condition(arg1 : Cone, arg2 : Cylinder, arg3 : Sphere) : Bool;
+
+// @usage 1
+op main_condition(arg1 : Point) : Bool;
+
+// @usage 1
+op mid_line(arg1 : Point, arg2 : Triangle) : Line;
+
+// @usage 2
+op mid_point(arg1 : Point, arg2 : Point) : Point;
+
+// @usage 4
+op midpoint(arg1 : Point, arg2 : Point) : Point;
+
+// @usage 1
+op n_of(arg1 : Point) : Point;
+
+// @usage 1
+op opposite_side(arg1 : Triangle, arg2 : Point) : LineSegment;
+
+// @usage 1
+op parallel_line(arg1 : Line, arg2 : Point) : Line;
+
+// @usage 2
+op parallelogram_of(arg1 : Point, arg2 : Point, arg3 : Point, arg4 : Point) : Parallelogram;
+
+// @usage 1
+op perpendicular(arg1 : Segment, arg2 : Segment) : Bool;
+
+// @usage 8
+op point_distance(arg1 : Point, arg2 : Point) : Number;
+
+// @usage 5
+op point_in_polygon(arg1 : Point, arg2 : Polygon) : Bool;
+
+// @usage 1
+op point_in_triangle(arg1 : Point, arg2 : Triangle) : Bool;
+
+// @usage 11
+op point_on_curve(arg1 : Point, arg2 : Curve) : Bool;
+
+// @usage 1
+op point_on_curve(arg1 : Point, arg2 : Curve) : Number;
+
+// @usage 1
+op point_on_plane(arg1 : Point, arg2 : Plane) : Bool;
+
+// @usage 1
+op point_symmetry_line(arg1 : Line, arg2 : Point) : Point;
+
+// @usage 4
+op quadrilateral_of(arg1 : Point, arg2 : Point, arg3 : Point, arg4 : Point) : Quadrilateral;
+
+// @usage 1
+op ray_of(arg1 : Point, arg2 : Point) : Ray;
+
+// @usage 1
+op reflect(arg1 : Point, arg2 : Line) : Point;
+
+// @usage 1
+op same_side(arg1 : Point, arg2 : Point, arg3 : Line) : Bool;
+
+// @usage 1
+op segment(arg1 : Point, arg2 : Point) : Segment;
+
+// @usage 1
+op segment_of(arg1 : Point, arg2 : Point) : LineSegment;
+
+// @usage 1
+op side_length_sequence(arg1 : set(LineSegment)) : NumberList;
+
+// @usage 1
+op sin(arg1 : Angle) : Number;
+
+// @usage 1
+op sin(arg1 : AngleMeasure) : Number;
+
+// @usage 1
+op split_quadrilateral(arg1 : Quadrilateral, arg2 : Natural) : set(Quadrilateral);
+
+// @usage 1
+op three_point_area(arg1 : Point, arg2 : Point, arg3 : Point) : Number;
+
+// @usage 1
+op threeLine_on_same_point(arg1 : Line, arg2 : Line, arg3 : Line) : Bool;
+
+// @usage 1
+op touch_point(arg1 : Circle, arg2 : LineSegment) : Point;
+
+// @usage 2
+op trajectory_of(arg1 : set(Point)) : Trajectory;
+
+// @usage 3
+op triangle(arg1 : Point, arg2 : Point, arg3 : Point) : Triangle;
+
+// @usage 2
+op unit(arg1 : Number, arg2 : Unit) : Quantity;

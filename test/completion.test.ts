@@ -329,6 +329,29 @@ output = { (x1,x2,x3) | x1: set(Real), x2: set(Real), `;
       (await smart("op midpoint(Po§, Point) : Point;"))[0].finished,
     ).toBeUndefined();
   });
+  it("preserves blank lines and the original indentation of statements below a completion", async () => {
+    for (const newline of ["\n", "\r\n"]) {
+      const suffix = `${newline}  ${newline}${newline}\tconcept Real;${newline}`;
+      const input = "concept Num§;" + suffix;
+      const choice = (await smart(input)).find((c) => c.name === "Number");
+      expect(choice?.finished).toBe(true);
+      expect(applyCompletion(input, choice)).toBe("concept Number;" + suffix);
+    }
+    const input = "op mid§;\n    concept Existing;";
+    const choice = (await smart(input)).find((c) => c.name === "midpoint");
+    expect(applyCompletion(input, choice)).toBe(
+      "op midpoint(Point, Point) : Point;\n    concept Existing;",
+    );
+  });
+  it("reuses an existing blank line before a set close without pulling later code up", async () => {
+    const suffix = "\n    \n\n  };\n\nconcept Extra;";
+    const input = "output = {pt |\n  pt : Re§" + suffix;
+    const choice = (await smart(input)).find((c) => c.name === "Real");
+    expect(choice?.finished).toBe(true);
+    expect(applyCompletion(input, choice)).toBe(
+      "output = {pt |\n  pt : Real," + suffix,
+    );
+  });
   it("does not accumulate indentation or move the closing symbols over consecutive completions", async () => {
     for (const [indent, newline, ending] of [
       ["  ", "\n", "};"],

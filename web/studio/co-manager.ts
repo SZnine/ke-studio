@@ -22,9 +22,10 @@ interface Host {
   workspace(): Workspace;
   refresh(): Promise<void>;
   click(selector: string, action: () => unknown | Promise<unknown>): void;
+  insert?(entry: Entry): Promise<void>;
 }
 
-export function createCoManager({ workspace, refresh, click }: Host) {
+export function createCoManager({ workspace, refresh, click, insert }: Host) {
   const formatType = (type: string) =>
     displayType(type, workspace().language.editor.typeSyntax);
   const managedDomain = () => {
@@ -38,6 +39,7 @@ export function createCoManager({ workspace, refresh, click }: Host) {
   const dictionary = createDictionary({
     workspace,
     edit: editEntry,
+    insert,
     copy: async (entry) => {
       const text = await api<string>("/api/co/declaration", "POST", { entry });
       await navigator.clipboard.writeText(text);

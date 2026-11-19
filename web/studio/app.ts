@@ -20,6 +20,7 @@ import {
 } from "./api";
 import type { Question, QuestionSummary } from "../../src/studio/language";
 import { createCoManager } from "./co-manager";
+import type { Entry } from "../../src/studio/language";
 import {
   $,
   button,
@@ -353,12 +354,16 @@ click("#quick-co-search", async () => {
   setTab("library");
   $<HTMLInputElement>("#library-search").focus();
 });
-const completionStyle = $<HTMLSelectElement>("#completion-style");
-const savedCompletion = localStorage.getItem("ke-studio.completion");
-completionStyle.value =
-  !savedCompletion || savedCompletion === "name" ? "smart" : savedCompletion;
-function updateCompletion() {
-  const value = completionStyle.value;
+const completionButtons = [
+  ...document.querySelectorAll<HTMLButtonElement>("[data-completion-mode]"),
+];
+function updateCompletion(value: string) {
+  for (const button of completionButtons) {
+    button.setAttribute(
+      "aria-pressed",
+      String(button.dataset.completionMode === value),
+    );
+  }
   ke.setOptions({
     enabled: value !== "off",
     callStyle:
@@ -372,8 +377,16 @@ function updateCompletion() {
   });
   localStorage.setItem("ke-studio.completion", value);
 }
-completionStyle.addEventListener("change", updateCompletion);
-updateCompletion();
+for (const button of completionButtons)
+  button.addEventListener("click", () =>
+    updateCompletion(button.dataset.completionMode!),
+  );
+const savedCompletion = localStorage.getItem("ke-studio.completion");
+updateCompletion(
+  completionButtons.find(
+    (button) => button.dataset.completionMode === savedCompletion,
+  )?.dataset.completionMode || "smart",
+);
 click("#format-document", () => ke.format());
 click("#export-document", async () => {
   await saveDocument();
@@ -385,6 +398,67 @@ const co = createCoManager({
   workspace: () => state,
   click,
   refresh: async () => applyState(await api(workspaceUrl())),
+  insert: async (entry: Entry) => {
+    if (
+      !state.question ||
+      (entry.kind !== "concept" && entry.kind !== "operator")
+    )
+      return;
+    const address = workspaceUrl();
+    const bank = state.storage.bank;
+    const context = state.editorContext;
+    const editor = ke.editor;
+    const model = editor.getModel()!;
+    const version = model.getVersionId();
+    const result = await api<{
+      edits: { start: number; end: number; text: string }[];
+      position: number;
+      draft?: boolean;
+    }>("/api/analyze", "POST", {
+      domain: state.domain.id,
+      questionId: state.question.id,
+      draft: state.question.draft,
+      editorContext: context,
+      text: ke.getText(),
+      annotation: {
+        kind: entry.kind,
+        name: entry.name,
+        type: entry.type,
+        params: entry.params.map(({ type }) => type),
+      },
+    });
+    if (
+      workspaceUrl() !== address ||
+      state.storage.bank !== bank ||
+      state.editorContext !== context ||
+      model.getVersionId() !== version
+    )
+      throw new Error("题目或 CO 已更新，请重新插入。");
+    if (result.draft) throw new Error("请先补齐 CO 的签名。");
+    if (result.edits.length) {
+      editor.pushUndoStop();
+      editor.executeEdits(
+        "ke-co-library",
+        result.edits.map(({ start, end, text }) => {
+          const from = model.getPositionAt(start),
+            to = model.getPositionAt(end);
+          return {
+            text,
+            range: {
+              startLineNumber: from.lineNumber,
+              startColumn: from.column,
+              endLineNumber: to.lineNumber,
+              endColumn: to.column,
+            },
+          };
+        }),
+      );
+      editor.pushUndoStop();
+    }
+    setTab("editor");
+    ke.jump(result.position);
+    notify(result.edits.length ? "已插入声明和依赖" : "已定位到现有声明");
+  },
 });
 function renderLibrary() {
   co.render();

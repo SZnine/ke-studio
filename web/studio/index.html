@@ -277,15 +277,32 @@
             <div class="toolbar">
               <span class="file-label" id="document-name">document.ke</span
               ><span class="spacer"></span
-              ><label class="inline-label"
-                >补全<select id="completion-style">
-                  <option value="smart">智能</option>
-                  <option value="identifier">仅名称</option>
-                  <option value="parentheses">名称与括号</option>
-                  <option value="arguments">完整参数</option>
-                  <option value="off">关闭</option>
-                </select></label
-              ><button class="button" id="export-document">导出</button
+              >
+              <div class="completion-toolbar">
+                <span id="completion-mode-label">补全</span>
+                <div
+                  class="completion-modes"
+                  role="group"
+                  aria-labelledby="completion-mode-label"
+                >
+                  <button type="button" data-completion-mode="smart" aria-pressed="true">
+                    智能
+                  </button>
+                  <button type="button" data-completion-mode="identifier" aria-pressed="false">
+                    仅名称
+                  </button>
+                  <button type="button" data-completion-mode="parentheses" aria-pressed="false">
+                    带括号
+                  </button>
+                  <button type="button" data-completion-mode="arguments" aria-pressed="false">
+                    完整参数
+                  </button>
+                  <button type="button" data-completion-mode="off" aria-pressed="false">
+                    关闭
+                  </button>
+                </div>
+              </div>
+              <button class="button" id="export-document">导出</button
               ><button class="button" id="format-document">格式化</button>
               <button
                 id="move-declaration"
@@ -432,27 +449,18 @@
         </div>
       </section>
       <section id="panel-library" class="panel" hidden>
-        <header class="page-heading"><h1>CO 字典</h1></header>
-        <div class="toolbar">
+        <header class="page-heading"><h1>CO 库</h1></header>
+        <div class="toolbar dictionary-toolbar">
           <input
             id="library-search"
             class="search"
             type="search"
-            placeholder="搜索名称、中文或拼音"
+            placeholder="搜索名称、释义、类型或拼音"
             aria-label="搜索 CO"
-          /><select id="kind-filter" aria-label="类型筛选">
-            <option value="all">全部类型</option>
-            <option value="concept">概念</option>
-            <option value="operator">算子</option>
-            <option value="constant">常量</option>
-            <option value="object">全局值</option></select
-          ><select id="dictionary-source" aria-label="字典范围">
-            <option value="all">全部可用词条</option>
-            <option value="current">当前领域</option>
-            <option value="common">通用库</option>
-            <option value="core">内置</option>
+          />
+          <select id="dictionary-source" aria-label="CO 来源">
+            <option value="all">全部来源</option>
           </select>
-          <span class="spacer"></span>
           <details class="dictionary-manage">
             <summary>管理</summary>
             <div>
@@ -465,17 +473,20 @@
           </details>
         </div>
         <div class="library-caption">
-          <span id="library-count"></span
-          ><span class="muted" id="library-hint"></span>
+          <div id="kind-filter" class="dictionary-kinds" role="group" aria-label="词条类型">
+            <button type="button" data-co-kind="all" aria-pressed="true">全部</button>
+            <button type="button" data-co-kind="concept" aria-pressed="false">概念</button>
+            <button type="button" data-co-kind="operator" aria-pressed="false">算子</button>
+            <button type="button" data-co-kind="value" aria-pressed="false">值</button>
+          </div>
+          <span id="library-count" aria-live="polite"></span>
         </div>
         <div class="dictionary-layout">
-          <div class="dictionary-results">
+          <div class="dictionary-results" aria-label="CO 结果">
             <div id="entries"></div>
             <div id="library-empty" class="empty" hidden>没有匹配的词条</div>
           </div>
-          <article id="dictionary-definition" class="dictionary-definition">
-            <p class="muted">选择词条查看定义</p>
-          </article>
+          <article id="dictionary-definition" class="dictionary-definition" tabindex="-1" aria-label="词条定义" hidden></article>
         </div>
       </section>
       <section id="panel-coke" class="panel" hidden>

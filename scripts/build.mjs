@@ -27,10 +27,25 @@ fingerprint.update(
   (await fs.readFile("package-lock.json", "utf8")).replace(/\r\n/g, "\n"),
 );
 const revision = fingerprint.digest("hex").slice(0, 12);
+const starterNames = {
+  geometry: "几何",
+  "number-theory": "数论",
+  algebra: "代数",
+  conics: "圆锥曲线",
+};
+const starter = await Promise.all(
+  Object.entries(starterNames).map(async ([domain, name]) => ({
+    id: `seed:${domain}`,
+    name,
+    domain,
+    text: await fs.readFile(`studio/co-seed/${domain}.keh`, "utf8"),
+  })),
+);
 const languageArtifact = {
   ...await compileGrammar(await fs.readFile("studio/language/ke.langium", "utf8")),
   core: await fs.readFile("studio/language/core.keh", "utf8"),
   manifest: await fs.readFile("studio/language/manifest.json", "utf8"),
+  starter,
   revision,
 };
 const shared = {

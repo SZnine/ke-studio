@@ -402,6 +402,33 @@ it("keeps conflicting historical definitions searchable without guessing a signa
   expect(names(await store.inspectEditor(input(state.editorContext)))).not.toContain("ambiguous");
 });
 
+it("makes released starter CO available in existing workspaces through explicit reuse", async () => {
+  const seed = {
+    id: "seed:child",
+    domain: "child",
+    name: "预置",
+    entries: language.readHeader(
+      "concept SeedShape; op seeded_score(SeedShape) : Real;",
+      "seed:child",
+    ).entries,
+  };
+  engine.active!.starterLibraries = [seed];
+  const state = await store.workspace("child");
+  expect(state.starterLibraries).toEqual([seed]);
+  expect(disk.writes).not.toHaveBeenCalled();
+  expect(names(await store.inspectEditor(input(state.editorContext)))).toContain("seeded_score");
+
+  const text = "concept Number; range : set(Number); range = {1, 2};";
+  const insertion = await store.inspectEditor({
+    ...input(state.editorContext),
+    text,
+    annotation: { kind: "operator", name: "seeded_score", type: "Real", params: ["SeedShape"] },
+  });
+  expect(insertion).toMatchObject({ declaration: "op seeded_score(SeedShape) : Real;" });
+  expect("added" in insertion && insertion.added).toContain("SeedShape");
+  expect(disk.writes).not.toHaveBeenCalled();
+});
+
 it("still opens the workbench when a CO file needs repair", async () => {
   disk.files.set("shared/libraries/parent.keh", "op broken(");
   const state = await store.workspace("child");
