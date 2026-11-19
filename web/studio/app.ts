@@ -555,6 +555,15 @@ const refreshWorkspace = createWorkspaceLoader({
   loaded(next) {
     $("#service-alert").hidden = true;
     const first = !state;
+    const sameQuestion =
+      !!state?.question &&
+      state.storage.folder === next.storage.folder &&
+      state.storage.bank === next.storage.bank &&
+      state.domain.id === next.domain.id &&
+      state.question.id === next.question?.id &&
+      state.question.draft === next.question?.draft;
+    // Index updates refresh completion context while the open document stays in the editor.
+    if (sameQuestion) next = { ...next, question: state.question };
     if (
       first ||
       reconnecting ||
@@ -579,7 +588,7 @@ const refreshWorkspace = createWorkspaceLoader({
           state.question,
         ])
     ) {
-      applyState(next, !documentDirty);
+      applyState(next, !sameQuestion && !documentDirty);
     }
     reconnecting = false;
     if (documentDirty) void run(saveDocument);
