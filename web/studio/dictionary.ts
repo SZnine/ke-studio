@@ -1,7 +1,7 @@
 import { completionSearchRank } from "../../src/completion-search";
+import { coSignature } from "../../src/studio/co-catalog";
 import {
   displayType,
-  entryKey,
   type Entry,
   type Workspace,
 } from "../../src/studio/language";
@@ -10,7 +10,7 @@ interface Host {
   workspace(): Workspace;
   edit(entry: Entry, source: string): void;
   remove(entry: Entry, source: string): Promise<void>;
-  core(): void;
+  copy(entry: Entry): Promise<void>;
   notify(text: string, error?: boolean): void;
 }
 const kinds: Record<string, string> = {
@@ -44,6 +44,7 @@ export function createDictionary(host: Host) {
     sourceSelect.replaceChildren(
       new Option("全部可用词条", "all"),
       new Option("当前领域", "current"),
+      new Option("已在题库使用", "used"),
       ...state.libraries
         .filter((lib) => lib.id !== state.domain.id)
         .map((lib) => new Option(lib.name, lib.id)),
@@ -55,7 +56,7 @@ export function createDictionary(host: Host) {
       ? previousSource
       : "all";
     const source = $<HTMLSelectElement>("dictionary-source").value;
-    const all = [
+    const defined = [
       ...state.libraries.flatMap((library) =>
         library.entries.map((entry) => ({
           entry,
@@ -69,10 +70,14 @@ export function createDictionary(host: Host) {
         label: "内置",
       })),
     ];
-    const rows = all
+    const known = new Set(defined.map(({ entry }) => coSignature(entry)));
+    const used = (state.usedEntries ?? [])
+      .filter((entry) => source === "used" || !known.has(coSignature(entry)))
+      .map((entry) => ({ entry, source: "used", label: "题库记录" }));
+    const rows = [...defined, ...used]
       .map((item) => ({
         ...item,
-        key: item.source + ":" + entryKey(item.entry),
+        key: item.source + ":" + coSignature(item.entry),
         rank: completionSearchRank(
           query,
           item.entry.name,
@@ -99,7 +104,7 @@ export function createDictionary(host: Host) {
           a.entry.name.localeCompare(b.entry.name),
       );
     $("library-count").textContent = `${rows.length} 个词条`;
-    $("library-hint").textContent = "词条供题目补全使用";
+    $("library-hint").textContent = "检索领域 CO 和题库中的声明";
     $("library-manage-scope").textContent =
       source === "common" ? "通用库" : "当前领域字典";
     $("import-library").title =
@@ -188,28 +193,40 @@ export function createDictionary(host: Host) {
     }
     if (entry.aliases?.length)
       detail.append(node("p", "别名：" + entry.aliases.join("、"), "muted"));
-    const usage = state.usage[entry.name] ?? entry.usage;
+    const usage =
+      item.source === "used"
+        ? entry.usage
+        : (state.usage[entry.name] ?? entry.usage);
     const metadata = [
-      usage === undefined ? "" : `引用 ${usage} 次`,
+      usage === undefined
+        ? ""
+        : item.source === "used"
+          ? `见于 ${usage} 份 KE`
+          : `引用 ${usage} 次`,
       entry.updated ? "更新于 " + entry.updated : "",
     ].filter(Boolean);
     if (metadata.length)
       detail.append(node("small", metadata.join(" · "), "muted"));
     const actions = node("div", "", "dictionary-actions");
-    const edit = node(
-      "button",
-      item.source === "core"
-        ? "编辑内置定义"
-        : entry.draft
-          ? "补齐签名"
-          : "编辑词条",
-      "button",
-    );
-    edit.addEventListener("click", () =>
-      item.source === "core" ? host.core() : host.edit(entry, item.source),
-    );
-    actions.append(edit);
-    if (item.source !== "core") {
+    if (!entry.draft) {
+      const copy = node("button", "复制声明", "button");
+      copy.addEventListener(
+        "click",
+        () =>
+          void host
+            .copy(entry)
+            .catch((error: Error) => host.notify(error.message, true)),
+      );
+      actions.append(copy);
+    }
+    if (item.source !== "core" && item.source !== "used") {
+      const edit = node(
+        "button",
+        entry.draft ? "补齐签名" : "编辑词条",
+        "button",
+      );
+      edit.addEventListener("click", () => host.edit(entry, item.source));
+      actions.append(edit);
       const remove = node("button", "删除", "text-button danger");
       remove.addEventListener(
         "click",

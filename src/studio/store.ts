@@ -2,18 +2,15 @@ import { files as fs } from "./files";
 import { path } from "./files";
 import { randomUUID } from "./files";
 import { version } from "../../package.json";
+import { sha256 } from "@noble/hashes/sha256";
+import { bytesToHex } from "@noble/hashes/utils";
 import { atomic, optional } from "./files";
-import { preference, savePreference } from "./preferences";
-import { workspaceInfo, saveLanguageDefaults } from "./workspace";
-import {
-  planLanguageDefaults,
-  type PublishedLanguage,
-} from "./language-defaults";
+import { workspaceInfo } from "./workspace";
 import { ancestors, moveDomain, scopeIds, domainSources } from "./domains";
 import { scopedSources } from "./library-scope";
-import { digest, LanguageEngine, Language } from "./engine";
+import { CoCatalog, supplementalCo } from "./co-catalog";
+import type { LanguageEngine, Language } from "./engine";
 import {
-  ChatMessage,
   CokeCase,
   Domain,
   Entry,
@@ -23,21 +20,14 @@ import {
   Workspace,
 } from "./language";
 import { Questions, questionSummary } from "./questions";
-import { Reviews } from "./reviews";
 
 import { inspectCoke } from "./coke";
-import type { ModelMessage } from "./model";
 
-export interface StoredChatMessage extends ChatMessage {
-  trace?: ModelMessage[];
-  state?: "running" | "complete" | "stopped" | "error";
-}
-
-interface Settings {
-  baseUrl: string;
-  model: string;
-  maxTokens?: number;
-}
+const contextKey = (input: object) =>
+  bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(input)))).slice(
+    0,
+    16,
+  );
 export interface Change {
   id: string;
   time: string;
@@ -51,7 +41,6 @@ export interface Change {
 export class Store {
   readonly questions: Questions;
   readonly drafts: Questions;
-  readonly reviews: Reviews;
   private queue = Promise.resolve();
   private editorContexts = new Map<
     string,
@@ -59,41 +48,25 @@ export class Store {
       language: Language;
       revision: string;
       profile: ReturnType<Language["context"]> | Error;
+      discovery?: ReturnType<Language["context"]>;
     }
   >();
   constructor(
     readonly root: string,
     readonly engine: LanguageEngine,
-    readonly workspaceId = "",
     readonly folder = "",
+    readonly catalog = new CoCatalog(),
   ) {
     this.questions = new Questions(root);
     this.drafts = new Questions(root, "drafts");
-    this.reviews = new Reviews(this);
-    engine.onChange = async (before, after, service) => {
-      await this.acceptLanguage(before, after, service, "外部语言文件更新");
-    };
   }
   file(name: string) {
     return path.join(
       name === "domains.json" || name.startsWith("libraries/")
         ? "shared"
-        : name === "model.json"
-          ? "settings"
-          : this.root,
+        : this.root,
       name,
     );
-  }
-  async initialize() {
-    if ((await optional(this.file("model.json"))) === undefined)
-      await atomic(
-        this.file("model.json"),
-        JSON.stringify(
-          { baseUrl: "https://api.deepseek.com", model: "deepseek-flash" },
-          null,
-          2,
-        ),
-      );
   }
   async domains(): Promise<Domain[]> {
     return JSON.parse(await fs.readFile(this.file("domains.json"), "utf8"));
@@ -103,43 +76,66 @@ export class Store {
     if (!domain) throw new Error("领域不存在。");
     return domain;
   }
-  async settings(): Promise<Settings> {
-    return JSON.parse(await fs.readFile(this.file("model.json"), "utf8"));
-  }
-  async key() {
-    const model = await this.settings();
-    return (
-      (await preference<string>(
-        "key:" + this.workspaceId + ":" + new URL(model.baseUrl).origin,
-      )) || ""
+
+  async firstDomain() {
+    const domains = await this.domains();
+    const ordinary = domains.filter((domain) => domain.id !== "common");
+    const populated = await Promise.all(
+      ordinary.map(async ({ id }) => {
+        try {
+          return (await fs.readdir(this.questions.directory(id))).some((name) =>
+            name.endsWith(".json"),
+          );
+        } catch (error) {
+          if ((error as { code?: string }).code !== "ENOENT") throw error;
+          return false;
+        }
+      }),
     );
+    return ordinary[populated.indexOf(true)]?.id ?? ordinary[0]?.id ?? "common";
   }
   async workspace(
     id = "default",
     questionId?: string,
     draft = false,
   ): Promise<Workspace> {
-    const domains = await this.domains(),
-      domain = await this.domain(id);
-    const language = await this.engine.state();
-    const model = await this.settings();
-    const questions = await this.questions.list(id);
-    const drafts = await this.drafts.list(id);
+    const domains = await this.domains();
+    const domain = domains.find((item) => item.id === id);
+    if (!domain) throw new Error("领域不存在。");
+    const [local, questions, drafts, usageFile, allLibraries] =
+      await Promise.all([
+        workspaceInfo(),
+        this.questions.list(id),
+        this.drafts.list(id),
+        optional(this.file(`usage/${id}.json`)),
+        this.libraries(domains),
+      ]);
     const question = questionId
       ? (draft ? drafts : questions).find((q) => q.id === questionId)
       : undefined;
-    const libraries = await this.scopedLibraries(
-      id,
-      question?.draft
-        ? domains.some((d) => d.id === question.coScope)
-          ? question.coScope
-          : "all"
-        : undefined,
+    const scope =
+      question?.draft && domains.some((d) => d.id === question.coScope)
+        ? question.coScope
+        : undefined;
+    const preference = scopeIds(domains, id, scope);
+    const service = this.engine.service;
+    const coreEntries = service.coreEntries;
+    const libraries = allLibraries.map((lib) => ({
+      ...lib,
+      entries: service.readHeader(lib.text, lib.id + ".keh").entries,
+    }));
+    const scoped = preference.flatMap((key) =>
+      libraries.filter((lib) => lib.id === key),
     );
-    const local = await workspaceInfo();
-    const usage = JSON.parse(
-      (await optional(this.file(`usage/${id}.json`))) || "{}",
+    const other = libraries.filter((lib) => !preference.includes(lib.id));
+    const usedEntries = this.catalog.entries;
+    const scopedEntries = scoped.flatMap((lib) => lib.entries);
+    const fallback = supplementalCo(
+      [other.flatMap((lib) => lib.entries), usedEntries],
+      scopedEntries,
+      coreEntries,
     );
+    const usage = JSON.parse(usageFile || "{}");
     return {
       storage: {
         folder: this.folder,
@@ -149,41 +145,53 @@ export class Store {
       version,
       domains,
       domain,
-      language,
-      editorContext: this.engine.active
-        ? this.prepareEditorContext(libraries, usage)
-        : "",
-      libraries: libraries.map((lib) => ({
-        ...lib,
-        entries: this.engine.active
-          ? this.engine.service.readHeader(lib.text, lib.id + ".keh").entries
-          : [],
-      })),
-      model: { ...model, hasKey: !!(await this.key()) },
+      language: await this.engine.state(),
+      editorContext: this.prepareEditorContext(scoped, usage, fallback),
+      libraries,
+      usedEntries,
+      editorEntries: [...coreEntries, ...fallback, ...scopedEntries],
       questions: questions.map(questionSummary),
       drafts: drafts.map(questionSummary),
-      proposals: await this.reviews.list(id),
       question,
-      coreEntries: this.engine.active ? this.engine.service.coreEntries : [],
+      coreEntries,
       usage,
     };
   }
   private prepareEditorContext(
     libraries: Awaited<ReturnType<Store["libraries"]>>,
     usage: Record<string, number>,
+    fallback: Entry[],
   ) {
     const { service: language, revision } = this.engine.active!;
-    const key = digest({
+    const key = contextKey({
       revision,
-      libraries: JSON.stringify(libraries),
-      usage: JSON.stringify(usage),
+      libraries: libraries.map(({ id, name, text }) => ({ id, name, text })),
+      usage,
+      fallback,
     });
     if (this.editorContexts.get(key)?.language !== language) {
       if (this.editorContexts.size >= 8)
         this.editorContexts.delete(this.editorContexts.keys().next().value!);
       let profile: ReturnType<Language["context"]> | Error;
+      let discovery: ReturnType<Language["context"]> | undefined;
       try {
         profile = this.context(libraries, usage, language);
+        if (fallback.length) {
+          try {
+            const discovered = fallback
+              .map((entry) => language.renderEntry(entry))
+              .join("\n");
+            discovery = language.context(
+              [
+                ...scopedSources(language, libraries),
+                { id: "catalog", name: "CO 索引", text: discovered },
+              ],
+              usage,
+            );
+          } catch {
+            // A conflicting optional definition must not prevent the current question from opening.
+          }
+        }
       } catch (error) {
         // Keep the library editor accessible when an externally edited CO file is invalid.
         profile = error instanceof Error ? error : new Error(String(error));
@@ -192,6 +200,7 @@ export class Store {
         language,
         revision,
         profile,
+        discovery,
       });
     }
     return key;
@@ -218,12 +227,12 @@ export class Store {
       );
       snapshot = this.editorContexts.get(state.editorContext);
     }
-    if (!snapshot) throw new Error(this.engine.error || "语言尚未编译。");
-    const { language, revision, profile } = snapshot;
+    if (!snapshot) throw new Error("语言服务尚未就绪。");
+    const { language, revision, profile, discovery } = snapshot;
     if (profile instanceof Error) throw profile;
     return {
       ...(input.annotation
-        ? language.annotate(input.text, input.annotation, profile)
+        ? language.annotate(input.text, input.annotation, profile, discovery)
         : input.move
           ? language.moveDeclaration(
               input.text,
@@ -238,28 +247,56 @@ export class Store {
                 input.offset || 0,
                 profile,
                 input.completion,
+                discovery,
               )),
       languageRevision: revision,
     };
   }
-  async scopedLibraries(id: string, scope?: string) {
-    const domains = await this.domains();
-    const preferred = scopeIds(
-      domains,
-      id,
-      scope === "all" ? undefined : scope,
+  indexCo() {
+    return this.catalog.load(this.engine.service, () =>
+      this.catalogDocuments(),
     );
-    const order =
-      scope === "all"
-        ? [
-            ...domains.map((d) => d.id).filter((id) => !preferred.includes(id)),
-            ...preferred,
-          ]
-        : preferred;
-    const libraries = await this.libraries();
-    return order
-      .map((id) => libraries.find((lib) => lib.id === id))
-      .filter((lib): lib is (typeof libraries)[number] => !!lib);
+  }
+
+  private async *catalogDocuments() {
+    const [workspace, domains] = await Promise.all([
+      workspaceInfo(),
+      this.domains(),
+    ]);
+    for (const { id: bank } of workspace.banks) {
+      for (const { id: domain } of domains) {
+        for (const collection of ["questions", "drafts"] as const) {
+          const questions = new Questions("banks/" + bank, collection);
+          for (const question of await questions.list(domain))
+            yield {
+              key: `${bank}/${domain}/${collection}/${question.id}`,
+              text: question.ke,
+            };
+        }
+        const cases: CokeCase[] = JSON.parse(
+          (await optional(`banks/${bank}/coke/${domain}.json`)) || "[]",
+        );
+        for (const example of cases)
+          yield {
+            key: `${bank}/${domain}/coke/${example.id}`,
+            text: `${example.co}\n${example.ke}`,
+          };
+      }
+    }
+  }
+
+  private updateCatalog(
+    domain: string,
+    collection: string,
+    id: string,
+    text: string,
+  ) {
+    const bank = this.root.split("/").at(-1)!;
+    return this.catalog.update(
+      this.engine.service,
+      `${bank}/${domain}/${collection}/${id}`,
+      text,
+    );
   }
   context(
     libraries: Awaited<ReturnType<Store["libraries"]>>,
@@ -274,24 +311,13 @@ export class Store {
       .filter(Boolean)
       .map((line) => JSON.parse(line));
   }
-  async chat(id: string): Promise<StoredChatMessage[]> {
-    await this.domain(id);
-    return JSON.parse((await optional(this.file(`chats/${id}.json`))) || "[]");
-  }
-  async saveChat(id: string, messages: StoredChatMessage[]) {
-    await this.domain(id);
-    await atomic(
-      this.file(`chats/${id}.json`),
-      JSON.stringify(messages, null, 2) + "\n",
-    );
-  }
   async coke(id: string): Promise<CokeCase[]> {
     await this.domain(id);
     return JSON.parse((await optional(this.file(`coke/${id}.json`))) || "[]");
   }
-  async libraries() {
+  async libraries(domains?: Domain[]) {
     return Promise.all(
-      (await this.domains()).map(async (domain) => ({
+      (domains ?? (await this.domains())).map(async (domain) => ({
         ...domain,
         text: await fs.readFile(
           this.file(`libraries/${domain.id}.keh`),
@@ -378,6 +404,14 @@ export class Store {
       JSON.stringify(cases, null, 2) + "\n",
       remove ? "删除标准例" : "编辑标准例",
     );
+    if (remove && input.id) this.updateCatalog(id, "coke", input.id, "");
+    for (const example of cases)
+      this.updateCatalog(
+        id,
+        "coke",
+        example.id,
+        `${example.co}\n${example.ke}`,
+      );
     return cases;
   }
   async change(file: string, text: string, reason: string) {
@@ -402,7 +436,7 @@ export class Store {
     );
     return change;
   }
-  /** Serialize the few file writes; reads and model requests do not hold this queue. */
+  /** Serialize writes independently of editor requests. */
   mutate<T>(operation: () => Promise<T>): Promise<T> {
     const task = this.queue.then(operation);
     this.queue = task.then(
@@ -410,87 +444,6 @@ export class Store {
       () => undefined,
     );
     return task;
-  }
-  async saveLanguage(files: Record<string, string>, reason = "编辑语言源码") {
-    const before = await this.engine.sources();
-    const unknown = Object.keys(files).find((name) => !(name in before));
-    if (unknown) throw new Error(`未知语言文件：${unknown}`);
-    const compiled = await this.engine.compile({ ...before, ...files });
-    const changes = await this.acceptLanguage(
-      this.engine.active?.files || before,
-      compiled.files,
-      compiled.service,
-      reason,
-    );
-    await this.engine.commit(compiled);
-    return changes;
-  }
-  async updateDefaultLanguage(published: PublishedLanguage) {
-    const before = await this.engine.sources();
-    const plan = planLanguageDefaults(
-      before,
-      published,
-      (await workspaceInfo()).languageDefaults,
-    );
-    this.engine.update = { updated: [], customized: plan.customized };
-    try {
-      if (Object.keys(plan.changes).length) {
-        const compiled = await this.engine.compile({
-          ...before,
-          ...plan.changes,
-        });
-        if (digest(await this.engine.sources()) !== digest(before))
-          throw new Error(
-            "语言文件在同步期间被修改，已保留本地内容，请重新同步。",
-          );
-        await this.acceptLanguage(
-          before,
-          compiled.files,
-          compiled.service,
-          "同步发布版默认语言文件",
-        );
-        await this.engine.commit(compiled);
-        this.engine.update.updated = Object.keys(plan.changes);
-      }
-      await saveLanguageDefaults(plan.baseline);
-    } catch (error) {
-      this.engine.update.error =
-        error instanceof Error ? error.message : String(error);
-    }
-  }
-  async acceptLanguage(
-    before: Record<string, string>,
-    after: Record<string, string>,
-    next: Language,
-    reason: string,
-  ) {
-    const libraries = await this.planLibraries(next);
-    await this.requireCoke(next, libraries);
-    const changes: Change[] = [];
-    for (const lib of libraries) {
-      const change = await this.change(
-        `libraries/${lib.id}.keh`,
-        lib.text,
-        reason,
-      );
-      if (change) changes.push(change);
-    }
-    if (!Object.keys(before).length) {
-      const previous = (await this.history())
-        .filter((change) => change.file === "language")
-        .at(-1);
-      if (previous) before = JSON.parse(previous.after);
-    }
-    if (JSON.stringify(before) !== JSON.stringify(after))
-      changes.push(
-        await this.record(
-          "language",
-          JSON.stringify(before),
-          JSON.stringify(after),
-          reason,
-        ),
-      );
-    return changes;
   }
   async planLibraries(
     next: Language,
@@ -502,91 +455,9 @@ export class Store {
       ...lib,
       text: replacements[lib.id] ?? lib.text,
     }));
-    // Re-render existing declarations with the new grammar surface. Their meanings,
-    // metadata and surrounding comments remain in place; business KE stays untouched.
-    for (const lib of libraries) {
-      if (!next.readHeader(lib.text, lib.id).issues.length) continue;
-      const old = this.engine.active?.service.readHeader(lib.text, lib.id);
-      if (!old || old.issues.length)
-        throw new Error(
-          `库 ${lib.name} 无法按新文法读取，请一并修改语言源码或库声明。`,
-        );
-      for (const entry of [...old.entries].reverse())
-        if (entry.span)
-          lib.text =
-            lib.text.slice(0, entry.span.start) +
-            next.renderEntry(entry) +
-            lib.text.slice(entry.span.end);
-    }
     for (const domain of domains)
       this.context(domainSources(libraries, domain.id), {}, next);
     return libraries;
-  }
-  /** Validate the whole replacement before touching current files; one history entry restores it together. */
-  async planUpdate(
-    files: Record<string, string>,
-    replacements: Record<string, string>,
-  ) {
-    const previous = await this.engine.sources();
-    for (const name of Object.keys(files))
-      if (!(name in previous)) throw new Error(`未知语言文件：${name}`);
-    const compiled = Object.keys(files).length
-      ? await this.engine.compile({ ...previous, ...files })
-      : this.engine.active!;
-    const libraries = await this.planLibraries(compiled.service, replacements);
-    const checked = await this.requireCoke(compiled.service, libraries);
-    return { previous, compiled, libraries, checked };
-  }
-  async saveUpdate(
-    files: Record<string, string>,
-    replacements: Record<string, string>,
-    reason: string,
-  ) {
-    const { previous, compiled, libraries, checked } = await this.planUpdate(
-      files,
-      replacements,
-    );
-    const oldLibraries = Object.fromEntries(
-      (await this.libraries()).map((l) => [l.id, l.text]),
-    );
-    const changedLanguage = Object.keys(compiled.files).filter(
-      (name) => previous[name] !== compiled.files[name],
-    );
-    const changedLibraries = libraries.filter(
-      (lib) => oldLibraries[lib.id] !== lib.text,
-    );
-    const before = {
-      language: Object.fromEntries(
-        changedLanguage.map((name) => [name, previous[name]]),
-      ),
-      libraries: Object.fromEntries(
-        changedLibraries.map((lib) => [lib.id, oldLibraries[lib.id]]),
-      ),
-    };
-    const after = {
-      language: Object.fromEntries(
-        changedLanguage.map((name) => [name, compiled.files[name]]),
-      ),
-      libraries: Object.fromEntries(
-        changedLibraries.map((lib) => [lib.id, lib.text]),
-      ),
-    };
-    if (JSON.stringify(before) === JSON.stringify(after))
-      return { changes: [], checked };
-    for (const lib of changedLibraries)
-      await atomic(this.file(`libraries/${lib.id}.keh`), lib.text);
-    await this.engine.commit(compiled);
-    return {
-      changes: [
-        await this.record(
-          "update",
-          JSON.stringify(before),
-          JSON.stringify(after),
-          reason,
-        ),
-      ],
-      checked,
-    };
   }
   async saveQuestion(
     domain: string,
@@ -606,7 +477,13 @@ export class Store {
             `${reason || (draft ? "新增草稿" : "新增题目")}：${item.number}`,
           )
         : (await records.write(domain, item), undefined);
-    return { question: item, change };
+    const catalogChanged = this.updateCatalog(
+      domain,
+      records.collection,
+      item.id,
+      item.ke,
+    );
+    return { question: item, change, catalogChanged };
   }
   async deleteQuestion(domain: string, id: string, draft = false) {
     await this.domain(domain);
@@ -619,6 +496,7 @@ export class Store {
       `删除${draft ? "草稿" : "题目"}：${item.number}`,
     );
     await records.remove(domain, item.id);
+    this.updateCatalog(domain, records.collection, item.id, "");
     return change;
   }
   async publishDraft(
@@ -727,6 +605,7 @@ export class Store {
     );
     await this.record("domain-delete", archive, "", `删除领域：${domain.name}`);
     for (const name of Object.keys(data)) await fs.unlink(name);
+    this.catalog.removeDomains(removed.map((domain) => domain.id));
     return removed;
   }
   async checkLibrary(id: string, text: string) {
@@ -756,10 +635,7 @@ export class Store {
     if (!["concept", "operator"].includes(entry.kind))
       throw new Error("只能新增概念或算子。");
     const state = await this.workspace(id, questionId, draft);
-    const entries = [
-      ...state.coreEntries,
-      ...state.libraries.flatMap((library) => library.entries),
-    ];
+    const entries = state.editorEntries;
     if (entries.some((existing) => existing.name === entry.name))
       throw new Error("同名 CO 已存在，请直接选择或在字典中编辑。");
     const target =
@@ -769,24 +645,6 @@ export class Store {
         : id;
     await this.editLibrary(target, [{ entry }], "从原文工具新建 CO");
     return this.workspace(id, questionId, draft);
-  }
-  async saveModel(model: Settings, key?: string) {
-    const url = new URL(model.baseUrl);
-    if (!["https:", "http:"].includes(url.protocol) || !model.model.trim())
-      throw new Error("请填写接口地址和模型名称。");
-    if (
-      model.maxTokens !== undefined &&
-      (!Number.isSafeInteger(model.maxTokens) || model.maxTokens < 1)
-    )
-      throw new Error("输出上限须为正整数，留空使用模型默认值。");
-    const name = "key:" + this.workspaceId + ":" + url.origin;
-    if (key?.trim()) await savePreference(name, key.trim());
-    else if (key === "") await savePreference(name, undefined);
-    await this.change(
-      "model.json",
-      JSON.stringify(model, null, 2) + "\n",
-      "更新模型配置",
-    );
   }
   async restore(id: string) {
     const change = (await this.history()).find((item) => item.id === id);
@@ -817,6 +675,8 @@ export class Store {
       ];
       await atomic(this.file("domains.json"), JSON.stringify(next, null, 2));
       await fs.unlink(change.before);
+      this.catalog.restoreDomains(archive.domains.map((domain) => domain.id));
+      await this.indexCo();
       return [
         await this.record(
           "domain-restore",
@@ -847,24 +707,10 @@ export class Store {
         JSON.stringify(restored, null, 2) + "\n",
         `恢复：${change.reason}`,
       );
+      this.updateCatalog(domain, collection, id, restored.ke);
       return saved ? [saved] : [];
     }
-    if (change.file === "update") {
-      const previous = JSON.parse(change.before);
-      return (
-        await this.saveUpdate(
-          previous.language,
-          previous.libraries,
-          `恢复：${change.reason}`,
-        )
-      ).changes;
-    }
-    if (change.file === "language")
-      return this.saveLanguage(
-        JSON.parse(change.before),
-        `恢复：${change.reason}`,
-      );
-    else if (change.file.startsWith("libraries/")) {
+    if (change.file.startsWith("libraries/")) {
       const domain = await this.domain(
         path.basename(change.file).replace(/\.keh$/, ""),
       );

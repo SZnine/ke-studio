@@ -2,10 +2,8 @@ import { build } from "esbuild";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { languageDefaults } from "./language-defaults.mjs";
-const defaults = await languageDefaults();
+import { compileGrammar } from "../studio/compile-grammar.mjs";
 const fingerprint = createHash("sha256");
-fingerprint.update(JSON.stringify(defaults));
 async function hashSources(folder) {
   for (const entry of (await fs.readdir(folder, { withFileTypes: true })).sort(
     (a, b) => (a.name < b.name ? -1 : 1),
@@ -29,6 +27,12 @@ fingerprint.update(
   (await fs.readFile("package-lock.json", "utf8")).replace(/\r\n/g, "\n"),
 );
 const revision = fingerprint.digest("hex").slice(0, 12);
+const languageArtifact = {
+  ...await compileGrammar(await fs.readFile("studio/language/ke.langium", "utf8")),
+  core: await fs.readFile("studio/language/core.keh", "utf8"),
+  manifest: await fs.readFile("studio/language/manifest.json", "utf8"),
+  revision,
+};
 const shared = {
   bundle: true,
   platform: "browser",
@@ -57,12 +61,7 @@ const results = await Promise.all([
     entryPoints: ["src/studio/worker.ts"],
     outfile: "dist/workspace.worker.js",
     metafile: true,
-  }),
-  build({
-    ...shared,
-    entryPoints: ["src/studio/framework.ts"],
-    outfile: "dist/framework.mjs",
-    metafile: true,
+    define: { ...shared.define, __KE_LANGUAGE__: JSON.stringify(languageArtifact) },
   }),
   build({
     ...shared,
@@ -88,13 +87,7 @@ async function collect(folder, prefix) {
   }
 }
 await collect("initial", "");
-await collect("studio/language", "shared/language/");
 await fs.writeFile("dist/initial.json", JSON.stringify(template));
-await fs.writeFile("dist/language-defaults.json", JSON.stringify(defaults));
-await fs.copyFile(
-  "node_modules/esbuild-wasm/esbuild.wasm",
-  "dist/esbuild.wasm",
-);
 await fs.writeFile(
   "dist/index.html",
   (await fs.readFile("web/studio/index.html", "utf8")).replaceAll(

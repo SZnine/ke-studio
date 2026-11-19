@@ -1,52 +1,46 @@
 import {
-  createServicesForGrammar,
-  createLangiumGrammarServices,
+  AbstractAstReflection,
   EmptyFileSystem,
-  URI
-} from '../framework.mjs';
+  inject,
+  loadGrammarFromJson
+} from 'langium';
+import { createDefaultModule, createDefaultSharedModule } from 'langium/lsp';
+import type { CompiledGrammar } from '../compile-grammar.mjs';
 import { initializeSyntax, parse } from './parser';
 import { analyzeProgram } from './semantic';
-import { defaults, profile } from './profile';
+import { defaults, profile, type Profile } from './profile';
 import { combineLibraries, emptyLibrary, readHeader, renderEntry, type Entry } from './ontology';
 import { withLibrary } from './library';
-import { inspect, format, tokenTypes } from './editor';
+import { inspect, format, tokenTypes, type CompletionOptions } from './editor';
 import { annotate, moveDeclaration, type AnnotationRequest } from './annotation';
 
-export async function createLanguage(files: Record<string, string>, previousCore?: any[]) {
-  const grammarServices = createLangiumGrammarServices(EmptyFileSystem).grammar;
-  const doc = grammarServices.shared.workspace.LangiumDocumentFactory.fromString<any>(
-    files['ke.langium'],
-    URI.parse('memory:/ke.langium')
-  );
-  await grammarServices.shared.workspace.DocumentBuilder.build([doc], { validation: true });
-  const errors = doc.diagnostics?.filter((d: any) => d.severity === 1) || [];
-  if (errors.length)
-    throw new Error(
-      errors.map((d: any) => `ke.langium:${d.range.start.line + 1} ${d.message}`).join('\n')
-    );
-  const services = await createServicesForGrammar({
-    grammar: doc.parseResult.value,
-    grammarServices,
-    languageMetaData: {
+class PublishedAstReflection extends AbstractAstReflection {
+  constructor(readonly types: CompiledGrammar['types']) {
+    super();
+  }
+}
+
+export function createLanguageFromCompiled(
+  artifact: CompiledGrammar & { core: string; manifest: string }
+) {
+  const grammar = loadGrammarFromJson(artifact.grammar);
+  const shared = inject(createDefaultSharedModule(EmptyFileSystem), {
+    AstReflection: () => new PublishedAstReflection(artifact.types)
+  });
+  const services = inject(createDefaultModule({ shared }), {
+    Grammar: () => grammar,
+    LanguageMetaData: () => ({
       languageId: 'ke',
       fileExtensions: ['.ke', '.keh'],
       caseInsensitive: false,
-      mode: 'development'
-    }
+      mode: 'production' as const
+    }),
+    parser: { ParserConfig: () => ({}) }
   });
-  // Force parser construction now, not on the first user keystroke.
-  const definitions = services.parser.LangiumParser.definitionErrors;
-  if (definitions.length) throw new Error(definitions.map((e: any) => e.message).join('\n'));
+  shared.ServiceRegistry.register(services);
   initializeSyntax(services);
-  let coreText = files['core.keh'];
-  let core = readHeader(coreText, 'language/core.keh');
-  // Keep valid user-owned definitions byte-for-byte; only migrate an incompatible grammar surface.
-  if (core.issues.length && previousCore) {
-    for (const entry of [...previousCore].reverse())
-      coreText =
-        coreText.slice(0, entry.span.start) + renderEntry(entry) + coreText.slice(entry.span.end);
-    core = readHeader(coreText, 'language/core.keh');
-  }
+  const coreText = artifact.core;
+  const core = readHeader(coreText, 'language/core.keh');
   if (core.issues.length)
     throw new Error('core.keh: ' + core.issues.map((i) => i.message).join('\n'));
   const coreLibrary = combineLibraries(emptyLibrary(), [
@@ -85,7 +79,7 @@ export async function createLanguage(files: Record<string, string>, previousCore
     object,
     { text: string; value: ReturnType<typeof analyzeProgram> }
   >();
-  function analyze(text: string, p: any) {
+  function analyze(text: string, p: Profile) {
     const saved = analyses.get(p);
     if (saved?.text === text) return saved.value;
     const value = analyzeProgram(parse(text, p), p, text);
@@ -100,7 +94,7 @@ export async function createLanguage(files: Record<string, string>, previousCore
       ),
       ...core.entries
     ],
-    manifest: JSON.parse(files['manifest.json']),
+    manifest: JSON.parse(artifact.manifest),
     guide: Object.fromEntries(
       Object.entries(defaults).filter(
         ([key, value]) =>
@@ -138,22 +132,56 @@ export async function createLanguage(files: Record<string, string>, previousCore
       ]
     },
     analyze,
-    annotate(text: string, request: AnnotationRequest, p: any) {
-      return annotate(text, request, analyze(text, p), p);
+    annotate(text: string, request: AnnotationRequest, p: Profile, discovery?: Profile) {
+      return annotate(text, request, analyze(text, p), discovery ?? p);
     },
     moveDeclaration(
       text: string,
       selection: { start: number; end: number },
       offset: number,
-      p: any
+      p: Profile
     ) {
       return moveDeclaration(text, selection, offset, analyze(text, p));
     },
-    inspect(text: string, offset: number, p: any, options: any = {}) {
-      return inspect(text, offset, analyze(text, p), p, options);
+    async inspect(text: string, offset: number, p: Profile, options: CompletionOptions = {}, discovery?: Profile) {
+      const analysis = analyze(text, p);
+      const result = await inspect(text, offset, analysis, p, options, discovery);
+      if (!discovery) return result;
+      result.completions = result.completions.filter((item) => {
+        const request = item.catalogDeclaration;
+        if (!request) return true;
+        delete item.catalogDeclaration;
+        try {
+          const plan = annotate(text, request, analysis, discovery, false);
+          if (request.kind === 'concept') {
+            const target = plan.declaration.slice(p.keywords.concept.length + 1, -p.style.statement.length);
+            item.insert = target + item.insert.slice(request.name.length);
+          }
+          item.edits = [
+            ...(item.edits || []),
+            ...plan.edits.map((edit) => edit.start <= request.position ? edit : {
+              start: request.position, end: request.position, text: edit.text.trimStart()
+            })
+          ];
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      return result;
     },
-    format(text: string, p: any) {
+    format(text: string, p: Profile) {
       return format(text, analyze(text, p), p);
     }
   };
+}
+
+// Build tooling and language tests compile source. The browser uses the published artifact.
+export async function createLanguage(files: Record<string, string>) {
+  const { compileGrammar } = await import('../compile-grammar.mjs');
+  return createLanguageFromCompiled({
+    ...await compileGrammar(files['ke.langium']),
+    core: files['core.keh'],
+    manifest: files['manifest.json']
+  });
 }

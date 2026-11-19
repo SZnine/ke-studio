@@ -4,6 +4,7 @@ import type {
   Workspace,
 } from "../../src/studio/language";
 import { api } from "./api";
+import { renderMarkdown } from "./markdown";
 
 interface Host {
   workspace(): Workspace;
@@ -23,6 +24,29 @@ export function createQuestions(host: Host) {
     e.textContent = text;
     return e;
   };
+  const previewSource = new WeakMap<Element, string>();
+  const previewCache = new Map<string, string>();
+  const previewObserver = new IntersectionObserver((entries) => {
+    for (const { target, isIntersecting } of entries) {
+      if (!isIntersecting || !target.isConnected) continue;
+      previewObserver.unobserve(target);
+      const source = previewSource.get(target)!;
+      let html = previewCache.get(source);
+      if (html === undefined) {
+        const snippet = document.createElement("template");
+        snippet.innerHTML = renderMarkdown(source);
+        for (const link of snippet.content.querySelectorAll("a"))
+          link.replaceWith(...link.childNodes);
+        for (const image of snippet.content.querySelectorAll("img"))
+          image.replaceWith(image.alt);
+        html = snippet.innerHTML;
+        if (previewCache.size >= 128)
+          previewCache.delete(previewCache.keys().next().value!);
+        previewCache.set(source, html);
+      }
+      target.innerHTML = html;
+    }
+  });
   function render() {
     const state = host.workspace();
     const query = $<HTMLInputElement>("#question-search")
@@ -38,6 +62,7 @@ export function createQuestions(host: Host) {
       ? "没有匹配的题目"
       : "添加第一道题，或一次导入多个 KE 文件。";
     const body = $("#question-rows");
+    previewObserver.disconnect();
     body.replaceChildren();
     for (const [index, item] of rows.entries()) {
       const row = node("tr");
@@ -47,9 +72,14 @@ export function createQuestions(host: Host) {
       link.className = "question-link";
       link.addEventListener("click", () => run(() => host.open(item.id)));
       number.append(link);
-      const prompt = node("td", item.prompt || "尚未填写题干");
-      prompt.className = "question-preview";
-      prompt.title = item.prompt;
+      const prompt = node("td");
+      const preview = node("div", item.prompt ? "" : "尚未填写题干");
+      preview.className = "question-preview";
+      prompt.append(preview);
+      if (item.prompt) {
+        previewSource.set(preview, item.prompt);
+        previewObserver.observe(preview);
+      }
       row.append(
         node("td", String(index + 1)),
         number,

@@ -7,7 +7,7 @@ import { once } from "node:events";
 import { unzipSync } from "fflate";
 import { createStaticServer, projectRoot } from "../scripts/serve.mjs";
 
-test("local server serves Pages paths, editor assets and WASM from the build", async () => {
+test("local server serves Pages paths and the prebuilt editor and language worker", async () => {
   const server = createStaticServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
@@ -26,11 +26,8 @@ test("local server serves Pages paths, editor assets and WASM from the build", a
       "app.css",
       "workspace.worker.js",
       "editor.worker.js",
-      "framework.mjs",
       "initial.json",
-      "language-defaults.json",
       "build.json",
-      "esbuild.wasm",
     ]) {
       const response = await fetch(
         base + "/ke-studio/" + name + "?v=" + build.revision,
@@ -42,11 +39,9 @@ test("local server serves Pages paths, editor assets and WASM from the build", a
         new Uint8Array(await fs.readFile(path.join(projectRoot, "dist", name))),
       );
     }
-    const head = await fetch(base + "/ke-studio/esbuild.wasm", {
-      method: "HEAD",
-    });
-    assert.equal(head.headers.get("content-type"), "application/wasm");
-    assert.equal(await head.text(), "");
+    assert.equal((await fetch(base + "/ke-studio/esbuild.wasm")).status, 404);
+    const template = await (await fetch(base + "/ke-studio/initial.json")).json();
+    assert.ok(!Object.keys(template).some((name) => name.startsWith("shared/language/")));
     const font = await fetch(
       base + "/ke-studio/fonts/KaTeX_Main-Regular.woff2",
     );

@@ -10,6 +10,7 @@ import type { Root as MarkdownRoot } from "mdast";
 import type { Root, Element, RootContent } from "hast";
 import type { VFile } from "vfile";
 import type { TextAnnotation } from "../../src/studio/language";
+import { legacyQuestionMath } from "./legacy-question-math";
 
 const parser = unified().use(remarkParse);
 /** Alternate math delimiters retain their length so annotations keep original offsets. */
@@ -56,6 +57,9 @@ function literalHtml() {
 function evidence() {
   return (tree: Root, file: VFile) => {
     const source = String(file.data.source || file.value);
+    const sourceOffset = file.data.sourceOffset as
+      | ((offset: number) => number)
+      | undefined;
     const annotations =
       (file.data.annotations as TextAnnotation[] | undefined) || [];
     const valid = annotations.filter(
@@ -84,8 +88,10 @@ function evidence() {
       children: [node as Element["children"][number]],
     });
     function decorate(node: RootContent): RootContent[] {
-      const start = node.position?.start.offset,
-        end = node.position?.end.offset;
+      const from = node.position?.start.offset,
+        to = node.position?.end.offset;
+      const start = from === undefined ? undefined : sourceOffset?.(from) ?? from,
+        end = to === undefined ? undefined : sourceOffset?.(to) ?? to;
       const marks =
         start === undefined || end === undefined
           ? []
@@ -153,13 +159,15 @@ const markdown = unified()
 export const renderMarkdown = (
   text: string,
   annotations: TextAnnotation[] = [],
-) =>
-  String(
+) => {
+  const { value, sourceOffset } = legacyQuestionMath(text);
+  return String(
     markdown.processSync({
-      value: mathDelimiters(text),
-      data: { source: text, annotations },
+      value: mathDelimiters(value),
+      data: { source: text, annotations, sourceOffset },
     }),
   );
+};
 const rendered = new WeakMap<HTMLElement, string>();
 export function updateMarkdown(
   host: HTMLElement,

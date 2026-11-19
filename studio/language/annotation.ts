@@ -22,7 +22,7 @@ function endOfStatement(a: Analysis, source: string, item: Span) {
 }
 
 /** A selected evidence span requests declarations; the current grammar and CO own their spelling. */
-export function annotate(source: string, request: AnnotationRequest, a: Analysis, p: Profile) {
+export function annotate(source: string, request: AnnotationRequest, a: Analysis, p: Profile, includeTarget = true) {
   if (!['concept', 'operator'].includes(request.kind)) throw new Error('请选择概念或算子工具。');
   const pending =
     request.kind === 'operator' &&
@@ -46,20 +46,19 @@ export function annotate(source: string, request: AnnotationRequest, a: Analysis
     groups.set(group, [...(groups.get(group) || []), text]);
     added.push(name);
   };
-  const concept = (name: string) => {
+  const conceptDeclaration = (name: string, parent?: string) =>
+    `${p.keywords.concept} ${name}${parent ? ' ' + p.surface.Subtype[0] + ' ' + parent : ''}${p.style.statement}`;
+  const concept = (name: string, include = true) => {
     if (visited.has(name)) return;
     visited.add(name);
     const existing = declarations.find((d) => d.name === name && d.kind === 'concept');
     const symbol = symbols.get(name);
     if (symbol?.kind !== 'concept') throw new Error(`概念 ${name} 不在当前 CO 范围内。`);
+    const current = a.symbols.get(name);
+    if (current && current.kind !== 'concept') throw new Error(`文档中已有其他同名声明 ${name}。`);
     const parent = existing?.parent?.name || p.typeMetadata[name]?.parent;
     if (parent) concept(parent);
-    if (existing) return;
-    append(
-      0,
-      `${p.keywords.concept} ${name}${parent ? ' ' + p.surface.Subtype[0] + ' ' + parent : ''}${p.style.statement}`,
-      name
-    );
+    if (!existing && include) append(0, conceptDeclaration(name, parent), name);
   };
   const includeType = (type: string) => {
     const parts = typeParts(type);
@@ -69,13 +68,9 @@ export function annotate(source: string, request: AnnotationRequest, a: Analysis
   let declaration = '',
     existing: Declaration | undefined;
   if (request.kind === 'concept') {
-    concept(request.name);
+    concept(request.name, includeTarget);
     existing = declarations.find((d) => d.kind === 'concept' && d.name === request.name);
-    declaration =
-      groups
-        .get(0)
-        ?.find((line) => line.startsWith(p.keywords.concept + ' ' + request.name + ' ')) ||
-      `${p.keywords.concept} ${request.name}${p.style.statement}`;
+    declaration = conceptDeclaration(request.name, p.typeMetadata[request.name]?.parent);
   } else if (request.kind === 'operator') {
     const symbol = symbols.get(request.name);
     if (symbol?.kind !== 'operator') throw new Error('请选择当前 CO 中的算子。');
@@ -98,7 +93,7 @@ export function annotate(source: string, request: AnnotationRequest, a: Analysis
       : [...selected.params, selected.type];
     required.forEach(includeType);
     declaration = `${p.operatorAliases[0]} ${describeDeclaration(selected, p)}${p.style.statement}`;
-    if (!existing) append(1, declaration, request.name);
+    if (!existing && includeTarget) append(1, declaration, request.name);
   }
   if (existing) declaration = source.slice(existing.start, endOfStatement(a, source, existing));
   const edits: TextEdit[] = [];

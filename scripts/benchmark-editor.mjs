@@ -18,7 +18,7 @@ await build({
     contents: `export { mount } from './src/studio/files';
 export { Store } from './src/studio/store';
 export { LanguageEngine } from './src/studio/engine';
-export { createLanguage } from ${JSON.stringify(path.join(workspace, "shared/language/index.ts"))};`,
+export { createLanguage } from './studio/language/index';`,
     resolveDir: projectRoot,
     loader: "ts",
   },
@@ -31,9 +31,6 @@ export { createLanguage } from ${JSON.stringify(path.join(workspace, "shared/lan
     {
       name: "benchmark-platform",
       setup(builder) {
-        builder.onResolve({ filter: /^\.\.\/framework\.mjs$/ }, () => ({
-          path: path.join(projectRoot, "src/studio/framework.ts"),
-        }));
         builder.onResolve({ filter: /^\.\/preferences$/ }, () => ({
           path: "preferences",
           namespace: "benchmark",
@@ -88,13 +85,14 @@ mount(handle(workspace));
 const metadata = JSON.parse(
   await fs.readFile(path.join(workspace, "ke-workspace.json"), "utf8"),
 );
+const languageDir = path.join(projectRoot, "studio/language");
 const files = Object.fromEntries(
   await Promise.all(
-    (await fs.readdir(path.join(workspace, "shared/language"))).map(
+    ["ke.langium", "core.keh", "manifest.json"].map(
       async (name) => [
         name,
         await fs.readFile(
-          path.join(workspace, "shared/language", name),
+          path.join(languageDir, name),
           "utf8",
         ),
       ],
@@ -103,11 +101,10 @@ const files = Object.fromEntries(
 );
 const language = await createLanguage(files);
 const engine = new LanguageEngine();
-engine.active = { service: language, files, revision: "benchmark" };
+engine.active = { service: language, revision: "benchmark" };
 const store = new Store(
   "banks/" + metadata.activeBank,
   engine,
-  metadata.id,
   path.basename(workspace),
 );
 const candidates = [];

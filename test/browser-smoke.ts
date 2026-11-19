@@ -14,10 +14,8 @@ document.querySelector("button")!.onclick = async () => {
       await navigator.storage.getDirectory()
     ).getDirectoryHandle("ke-test-" + crypto.randomUUID(), { create: true });
     let state = await connect(folder);
-    check(
-      !state.language.error && state.language.revision,
-      "Browser WASM compiles the published language",
-    );
+    const revision = state.language.revision;
+    check(revision && state.language.tokenTypes.length, "Published language is available at mount");
     const conic = state.domains.find((d) => d.name.includes("圆锥"))!;
     state = await api("/api/domains", "POST", { name: "父领域" });
     const parent = state.domain.id;
@@ -48,12 +46,13 @@ document.querySelector("button")!.onclick = async () => {
         question: {
           number: "T-01",
           prompt: "独立题库验证",
-          ke: "concept ParentShape;",
+          ke: "concept ParentShape;\nconcept ArchivedShape;\nop archived_measure(ArchivedShape): Real;",
         },
       },
     );
     const original = state.storage.bank;
     state = await api("/api/banks", "POST", { name: "第二题库" });
+    check(state.language.revision === revision, "Switching banks reuses the published language");
     check(
       state.domains.some((d) => d.id === child),
       "Banks share the domain tree",
@@ -61,6 +60,16 @@ document.querySelector("button")!.onclick = async () => {
     check(
       (await api<Question[]>("/api/questions?domain=" + child)).length === 0,
       "Question banks are isolated",
+    );
+    await api("/api/catalog");
+    result = await api<any>("/api/analyze", "POST", {
+      domain: child,
+      text: "op archived_m",
+      offset: "op archived_m".length,
+    });
+    check(
+      result.completions.some((item: any) => item.name === "archived_measure"),
+      "CO declared only in a question is available across banks",
     );
     await api("/api/banks", "PUT", { id: original });
     check(
@@ -98,8 +107,8 @@ document.querySelector("button")!.onclick = async () => {
       `/api/state?domain=${child}&question=${draft.question.id}&draft=true`,
     );
     check(
-      !state.libraries.some((lib) => lib.id === conic.id),
-      "Draft can narrow its CO scope",
+      state.libraries.some((lib) => lib.id === conic.id),
+      "Draft scope retains the global CO catalog",
     );
     await api("/api/domains", "PUT", {
       domain: child,
@@ -114,8 +123,8 @@ document.querySelector("button")!.onclick = async () => {
       offset: 3,
     });
     check(
-      !result.completions.some((c: any) => c.name === "parent_measure"),
-      "Moving a domain immediately changes completion scope",
+      result.completions.some((c: any) => c.name === "parent_measure"),
+      "Moving a domain keeps unambiguous former-parent CO available globally",
     );
     await api("/api/domains", "PUT", {
       domain: child,
@@ -133,24 +142,22 @@ document.querySelector("button")!.onclick = async () => {
         question.id,
       "Deleted hierarchy restores its question data",
     );
-    state = await api("/api/state?domain=" + parent);
-    const localReadme =
-      state.language.files["README.md"] + "\nLocal smoke check.\n";
-    state = await api("/api/language", "PUT", {
-      domain: parent,
-      files: { "README.md": localReadme },
-      revision: state.language.revision,
-    });
-    check(
-      state.language.files["README.md"] === localReadme &&
-        !state.language.error,
-      "Editable language recompiles inside browser",
-    );
+    const shared = await folder.getDirectoryHandle("shared");
+    let createdLanguage = false;
+    for await (const name of shared.keys()) if (name === "language") createdLanguage = true;
+    check(!createdLanguage, "New workspaces contain no executable language sources");
+    const legacy = await shared.getDirectoryHandle("language", { create: true });
+    const legacySource = await legacy.getFileHandle("index.ts", { create: true });
+    const archivedText = "throw new Error('legacy workspace code ran');";
+    const writer = await legacySource.createWritable();
+    await writer.write(archivedText);
+    await writer.close();
     state = await connect(folder);
     check(
-      state.language.files["README.md"] === localReadme &&
+      state.language.revision === revision &&
+        (await (await legacySource.getFile()).text()) === archivedText &&
         state.domains.some((d) => d.id === child),
-      "Reopening never overwrites local changes with templates",
+      "Reopening preserves legacy files while using the published language",
     );
     await savePreference("folder", folder);
     report.textContent += "\nALL BROWSER CHECKS PASSED";

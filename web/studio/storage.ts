@@ -19,7 +19,7 @@ export async function initStorage(host: {
     busy = value;
     choose.disabled = value;
     resume.disabled = value;
-    status.textContent = value ? "正在打开本地文件并编译语法…" : "";
+    status.textContent = value ? "正在打开题库…" : "";
   }
   async function open(selected: FileSystemDirectoryHandle) {
     loading(true);
@@ -31,8 +31,9 @@ export async function initStorage(host: {
       handle = selected;
       opened = true;
       host.apply(workspace);
-      dialog.close();
+      if (dialog.open) dialog.close();
     } catch (cause) {
+      if (!dialog.open) show();
       error.textContent =
         cause instanceof Error ? cause.message : String(cause);
       error.hidden = false;
@@ -73,8 +74,8 @@ export async function initStorage(host: {
     )
       await open(handle);
   };
-  show();
   if (!("showDirectoryPicker" in window)) {
+    show();
     choose.disabled = true;
     resume.hidden = true;
     error.textContent =
@@ -82,7 +83,10 @@ export async function initStorage(host: {
     error.hidden = false;
   } else if (
     handle &&
-    (await handle.queryPermission({ mode: "readwrite" })) === "granted"
+    (await handle
+      .queryPermission({ mode: "readwrite" })
+      .catch(() => "prompt")) === "granted"
   )
     await open(handle);
+  else show();
 }

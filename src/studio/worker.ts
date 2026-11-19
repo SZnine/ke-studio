@@ -8,38 +8,30 @@ import {
 } from "./workspace";
 import { LanguageEngine } from "./engine";
 import { Store } from "./store";
-import { Assistant } from "./assistant";
 import { questionSummary } from "./questions";
 import { splitKe } from "./question-text";
-import type { ChatEvent } from "./language";
-import type { PublishedLanguage } from "./language-defaults";
+import { CoCatalog } from "./co-catalog";
 
 let store: Store,
-  engine: LanguageEngine,
-  assistant: Assistant,
   folder = "";
-let publishedLanguage: PublishedLanguage;
-const turns = new Set<Promise<unknown>>();
-async function openBank() {
-  assistant?.stopAll();
-  await Promise.allSettled([...turns]);
-  const local = await workspaceInfo();
-  engine = new LanguageEngine();
-  store = new Store("banks/" + local.activeBank, engine, local.id, folder);
-  await store.initialize();
-  await engine.refresh();
-  await store.updateDefaultLanguage(publishedLanguage);
-  assistant = new Assistant(store);
-  return store.workspace(
-    (await store.domains()).find((d) => d.id !== "common")?.id || "common",
-  );
+const engine = new LanguageEngine();
+const catalog = new CoCatalog();
+async function openWorkspace() {
+  try {
+    await workspaceInfo();
+  } catch (error) {
+    if ((error as { code?: string }).code !== "ENOENT") throw error;
+    const response = await fetch(assetUrl("initial.json"));
+    if (!response.ok) throw new Error("无法读取初始题库。");
+    await initializeWorkspace(await response.json());
+  }
 }
-async function route(
-  method: string,
-  address: string,
-  input: any,
-  emit: (event: ChatEvent) => void,
-) {
+async function openBank() {
+  const local = await workspaceInfo();
+  store = new Store("banks/" + local.activeBank, engine, folder, catalog);
+  return store.workspace(await store.firstDomain());
+}
+async function route(method: string, address: string, input: any) {
   if (!store) throw new Error("请先选择保存文件夹。");
   const url = new URL(address, "https://local/"),
     route = method + " " + url.pathname;
@@ -54,10 +46,14 @@ async function route(
   // Editor requests already carry a prepared scope. Do not read files or join the write queue.
   if (route === "POST /api/analyze" || route === "POST /api/format")
     return store.inspectEditor(input, route.endsWith("/format"));
-  if (route === "GET /api/state") await store.mutate(() => engine.refresh());
-  const first =
-    (await store.domains()).find((d) => d.id !== "common")?.id || "common";
-  const selected = url.searchParams.get("domain") || first;
+  if (route === "GET /api/catalog") {
+    await store.indexCo();
+    return null;
+  }
+  const selected =
+    url.searchParams.get("domain") ||
+    input.domain ||
+    (await store.firstDomain());
   const domain = input.domain || selected;
   switch (route) {
     case "GET /api/state":
@@ -66,6 +62,8 @@ async function route(
         url.searchParams.get("question") || undefined,
         url.searchParams.get("draft") === "true",
       );
+    case "POST /api/co/declaration":
+      return engine.service.renderEntry(input.entry);
     case "GET /api/questions":
       await store.domain(selected);
       return store.questions.list(selected);
@@ -79,32 +77,6 @@ async function route(
         id = url.searchParams.get("id");
       return id ? all.find((item) => item.id === id) : all.slice(-50).reverse();
     }
-    case "GET /api/chat":
-      return (await store.chat(selected)).map(
-        ({ trace, ...message }) => message,
-      );
-    case "DELETE /api/chat":
-      await assistant.clear(selected);
-      return [];
-    case "POST /api/chat/stop":
-      assistant.stop(domain);
-      return { stopping: true };
-    case "POST /api/chat": {
-      const turn = assistant.turn(
-        domain,
-        input.message,
-        input.context || {},
-        emit,
-        new AbortController().signal,
-      );
-      turns.add(turn);
-      try {
-        await turn;
-      } finally {
-        turns.delete(turn);
-      }
-      return;
-    }
   }
   return store.mutate(async () => {
     switch (route) {
@@ -113,9 +85,6 @@ async function route(
           cases: await store.saveCoke(domain, input.case, input.remove),
           checks: (await store.checkCoke()).filter((r) => r.domain === domain),
         };
-      case "POST /api/proposals/decide":
-        await store.reviews.decide(domain, input.id, input.selected || []);
-        break;
       case "POST /api/drafts/publish": {
         const question = await store.publishDraft(
           domain,
@@ -138,6 +107,7 @@ async function route(
         );
         return {
           question: result.question,
+          catalogChanged: result.catalogChanged,
           questions: (await store.questions.list(domain)).map(questionSummary),
           drafts: (await store.drafts.list(domain)).map(questionSummary),
         };
@@ -201,14 +171,6 @@ async function route(
             : domain,
         );
       }
-      case "PUT /api/language":
-        if (input.revision && input.revision !== engine.active?.revision)
-          throw new Error("语言已更新，请重新读取后修改。");
-        await store.saveLanguage(input.files, input.reason);
-        break;
-      case "POST /api/language/update":
-        await store.updateDefaultLanguage(publishedLanguage);
-        break;
       case "PUT /api/library":
         if (typeof input.text === "string")
           await store.saveLibrary(
@@ -225,16 +187,6 @@ async function route(
           input.questionId,
           !!input.draft,
         );
-      case "PUT /api/model":
-        await store.saveModel(
-          {
-            baseUrl: input.baseUrl.trim(),
-            model: input.model.trim(),
-            maxTokens: input.maxTokens,
-          },
-          input.apiKey,
-        );
-        break;
       case "PUT /api/usage":
         await store.recount(domain, input.files);
         break;
@@ -249,30 +201,13 @@ async function route(
 }
 self.onmessage = async ({ data }) => {
   const { id, method, url, input = {} } = data;
-  const emit = (event: ChatEvent) => self.postMessage({ id, event });
   try {
     if (method === "MOUNT") {
       mount(data.handle);
       folder = data.handle.name;
-      const [template, known] = await Promise.all([
-        fetch(assetUrl("initial.json")).then((r) => r.json()),
-        fetch(assetUrl("language-defaults.json")).then((r) => r.json()),
-      ]);
-      publishedLanguage = {
-        files: Object.fromEntries(
-          Object.entries(template as Record<string, string>)
-            .filter(([name]) => name.startsWith("shared/language/"))
-            .map(([name, text]) => [
-              name.slice("shared/language/".length),
-              text,
-            ]),
-        ),
-        known,
-      };
-      await initializeWorkspace(template);
+      await Promise.all([openWorkspace(), engine.load()]);
       self.postMessage({ id, result: await openBank() });
-    } else
-      self.postMessage({ id, result: await route(method, url, input, emit) });
+    } else self.postMessage({ id, result: await route(method, url, input) });
   } catch (error) {
     self.postMessage({
       id,

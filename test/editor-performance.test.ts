@@ -4,7 +4,6 @@ import { createLanguage } from "../studio/language/index";
 import { Store } from "../src/studio/store";
 import type { Language, LanguageEngine } from "../src/studio/engine";
 import { annotationName } from "../src/annotation-search";
-import { languageFingerprint } from "../src/studio/language-defaults";
 
 const disk = vi.hoisted(() => ({
   files: new Map<string, string>(),
@@ -87,7 +86,6 @@ beforeEach(() => {
     "shared/libraries/other.keh",
     "concept RemoteType; op remote_measure(RemoteType): Real;",
   );
-  put("settings/model.json", { baseUrl: "https://example.com", model: "test" });
   put("ke-workspace.json", {
     id: "test",
     activeBank: "default",
@@ -104,14 +102,13 @@ beforeEach(() => {
     coScope: "all",
   });
   engine = {
-    active: { service: language, revision: "one", files: {} },
+    active: { service: language, revision: "one" },
     get service() {
       return engine.active!.service;
     },
     async state() {
       return {
         revision: engine.active!.revision,
-        files: {},
         tokenTypes: [],
         editor: { brackets: [], triggers: [] },
       };
@@ -351,13 +348,13 @@ it("switches draft scope and rejects a snapshot from the previous language servi
   );
   put("banks/default/drafts/child/draft.json", { ...draft, coScope: "parent" });
   const limited = await store.workspace("child", "draft", true);
+  expect(limited.editorContext).not.toBe(all.editorContext);
   expect(
     names(await store.inspectEditor(input(limited.editorContext))),
-  ).not.toContain("remote_measure");
+  ).toContain("remote_measure");
   const inspect = vi.fn(language.inspect);
   engine.active = {
     service: { ...language, inspect },
-    files: {},
     revision: "two",
   };
   const result = await store.inspectEditor({
@@ -367,6 +364,42 @@ it("switches draft scope and rejects a snapshot from the previous language servi
   });
   expect(inspect).toHaveBeenCalledOnce();
   expect(result.languageRevision).toBe("two");
+});
+
+it("finds declarations used in other banks without expanding the document's semantic scope", async () => {
+  put("ke-workspace.json", {
+    id: "test", activeBank: "default", banks: [
+      { id: "default", name: "当前" }, { id: "previous", name: "旧题库" },
+    ],
+  });
+  put("banks/previous/questions/other/01.json", {
+    id: "01", number: "01", prompt: "", notes: "", updated: "",
+    ke: "concept Archived; op archived_measure(Archived) : Real; op range(Archived) : Real;",
+  });
+  const text = "concept Number; range : set(Number); range = {1, 2};";
+  const before = await store.workspace("child");
+  const beforeResult = await store.inspectEditor({ ...input(before.editorContext), text });
+  await store.indexCo();
+  const after = await store.workspace("child");
+  expect(after.usedEntries.map((entry) => entry.name)).toContain("archived_measure");
+  expect(names(await store.inspectEditor(input(after.editorContext)))).toContain("archived_measure");
+  const afterResult = await store.inspectEditor({ ...input(after.editorContext), text });
+  expect("issues" in beforeResult && beforeResult.issues).toEqual([]);
+  expect("issues" in afterResult && afterResult.issues).toEqual([]);
+});
+
+it("keeps conflicting historical definitions searchable without guessing a signature", async () => {
+  const question = { prompt: "", notes: "", updated: "" };
+  put("banks/default/questions/other/01.json", {
+    ...question, id: "01", number: "01", ke: "op ambiguous(Real) : Real;",
+  });
+  put("banks/default/questions/other/02.json", {
+    ...question, id: "02", number: "02", ke: "concept Bool; op ambiguous(Real) : Bool;",
+  });
+  await store.indexCo();
+  const state = await store.workspace("child");
+  expect(state.usedEntries.filter((entry) => entry.name === "ambiguous")).toHaveLength(2);
+  expect(names(await store.inspectEditor(input(state.editorContext)))).not.toContain("ambiguous");
 });
 
 it("still opens the workbench when a CO file needs repair", async () => {
@@ -379,73 +412,6 @@ it("still opens the workbench when a CO file needs repair", async () => {
     store.inspectEditor(input(state.editorContext)),
   ).rejects.toThrow();
 });
-it("validates and logs default language upgrades without replacing user libraries or questions", async () => {
-  let current = {
-    "semantic.ts": "old implementation",
-    "profile.ts": "custom rule",
-  };
-  engine.sources = vi.fn(async () => ({ ...current }));
-  engine.compile = vi.fn(async (files) => ({
-    files,
-    service: language,
-    revision: "updated",
-  }));
-  engine.commit = vi.fn(async (compiled) => {
-    current = compiled.files as typeof current;
-    engine.active = compiled;
-  });
-  const question = disk.files.get("banks/default/drafts/child/draft.json");
-  const library = disk.files.get("shared/libraries/child.keh");
-  await store.updateDefaultLanguage({
-    files: {
-      "semantic.ts": "fixed implementation",
-      "profile.ts": "default rule",
-    },
-    known: {
-      "semantic.ts": [languageFingerprint("old implementation")],
-      "profile.ts": [],
-    },
-  });
-  expect(current).toEqual({
-    "semantic.ts": "fixed implementation",
-    "profile.ts": "custom rule",
-  });
-  expect(engine.update).toEqual({
-    updated: ["semantic.ts"],
-    customized: ["profile.ts"],
-  });
-  expect(disk.files.get("banks/default/drafts/child/draft.json")).toBe(
-    question,
-  );
-  expect(disk.files.get("shared/libraries/child.keh")).toBe(library);
-  expect(disk.files.get("banks/default/history.jsonl")).toContain(
-    "同步发布版默认语言文件",
-  );
-  expect(
-    JSON.parse(disk.files.get("ke-workspace.json")!).languageDefaults[
-      "semantic.ts"
-    ],
-  ).toBe(languageFingerprint("fixed implementation"));
-});
-it("keeps the current language and baseline when an automatic update cannot compile", async () => {
-  engine.sources = vi.fn(async () => ({ "semantic.ts": "old" }));
-  engine.compile = vi.fn(async () => {
-    throw new Error("Cannot compile combined rules");
-  });
-  engine.commit = vi.fn();
-  const workspace = disk.files.get("ke-workspace.json");
-  await store.updateDefaultLanguage({
-    files: { "semantic.ts": "broken" },
-    known: { "semantic.ts": [languageFingerprint("old")] },
-  });
-  expect(engine.commit).not.toHaveBeenCalled();
-  expect(engine.update).toMatchObject({
-    updated: [],
-    error: "Cannot compile combined rules",
-  });
-  expect(disk.files.get("ke-workspace.json")).toBe(workspace);
-});
-
 it("shares analysis across cursor tools but isolates changed text and CO scopes", async () => {
   const one = language.context([
     { id: "one", name: "One", text: "concept First;" },

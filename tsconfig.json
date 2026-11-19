@@ -22,7 +22,6 @@
     "src/**/*.ts",
     "web/**/*.ts",
     "studio/language/**/*.ts",
-    "studio/framework.d.mts",
     "test/**/*.ts"
   ]
 }

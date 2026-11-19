@@ -8,7 +8,6 @@ export interface LocalWorkspace {
   id: string;
   banks: Bank[];
   activeBank: string;
-  languageDefaults?: Record<string, string>;
 }
 /** The publisher's template is copied once. Later releases never replace local files. */
 export async function initializeWorkspace(
@@ -16,8 +15,13 @@ export async function initializeWorkspace(
 ): Promise<LocalWorkspace> {
   const saved = await optional("ke-workspace.json");
   if (saved) return JSON.parse(saved);
-  for (const [name, text] of Object.entries(template))
-    if ((await optional(name)) === undefined) await atomic(name, text);
+  const entries = Object.entries(template);
+  for (let start = 0; start < entries.length; start += 12)
+    await Promise.all(
+      entries.slice(start, start + 12).map(async ([name, text]) => {
+        if ((await optional(name)) === undefined) await atomic(name, text);
+      }),
+    );
   const workspace: LocalWorkspace = {
     id: randomUUID(),
     banks: [{ id: "default", name: "我的题库" }],
@@ -28,13 +32,6 @@ export async function initializeWorkspace(
 }
 export async function workspaceInfo(): Promise<LocalWorkspace> {
   return JSON.parse(await files.readFile("ke-workspace.json"));
-}
-export async function saveLanguageDefaults(baseline: Record<string, string>) {
-  const data = await workspaceInfo();
-  if (JSON.stringify(data.languageDefaults) === JSON.stringify(baseline))
-    return;
-  data.languageDefaults = baseline;
-  await atomic("ke-workspace.json", JSON.stringify(data, null, 2));
 }
 export async function selectBank(id: string) {
   const data = await workspaceInfo();

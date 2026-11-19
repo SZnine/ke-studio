@@ -93,10 +93,7 @@ export function createAnnotations(host: Host) {
   };
   const allEntries = () => [
     ...new Map(
-      [
-        ...host.workspace().coreEntries,
-        ...host.workspace().libraries.flatMap((l) => l.entries),
-      ].map((e) => [entryKey(e), e]),
+      host.workspace().editorEntries.map((e) => [entryKey(e), e]),
     ).values(),
   ];
   const resolveMark = (mark: TextAnnotation) => {

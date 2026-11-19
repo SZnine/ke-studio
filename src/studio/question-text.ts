@@ -7,6 +7,8 @@ export function splitKe(text: string) {
     const line = lines[index];
     if (!line.trim()) {
       index++;
+      // The first blank line after the commented prompt separates the two parts.
+      if (prompt.length) break;
       continue;
     }
     const comment = line.match(/^\s*(?:--|\/\/)\s?(.*)$/);

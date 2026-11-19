@@ -1,4 +1,4 @@
-import { TextDocument } from '../framework.mjs';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 import { Analysis, displayType, signature, signatures, globalSymbols, Symbol, typeName } from './semantic';
 import { Profile, isNumericType, operatorTable } from './profile';
 import * as parser from './parser';
@@ -133,7 +133,8 @@ export async function inspect(
   offset: number,
   a: Analysis,
   p: Profile,
-  options: CompletionOptions = {}
+  options: CompletionOptions = {},
+  discovery?: Profile
 ) {
   offset = Math.max(0, Math.min(offset, source.length));
   const symbols = new Map(a.symbols);
@@ -296,7 +297,6 @@ export async function inspect(
       .sort(([a], [b]) => a.start - b.start);
     const leftType = leftTypes[0]?.[1] || symbols.get(before.at(-2)?.text || '')?.type;
     const numericOperand = operator?.category === 'arithmetic' || operator?.category === 'ordering';
-    // A workspace may retain a customized semantic module from an earlier default.
     const isNumeric = a.isNumeric ?? ((type: string) =>
       isNumericType(type, p) || isCompatible(type, p.numberLiteralType, a.compatibility, false));
     const expected =
@@ -318,6 +318,13 @@ export async function inspect(
       (t) => t.kind === 'number' && t.start < offset && offset <= t.end
     );
     const candidates = declarationName ? globalSymbols(p) : symbols;
+    const discoveredNames = new Set<string>();
+    if (discovery && declarationName !== undefined)
+      for (const [name, symbol] of globalSymbols(discovery)) {
+        if (symbols.has(name) || candidates.has(name)) continue;
+        candidates.set(name, symbol);
+        discoveredNames.add(name);
+      }
     for (const symbol of candidates.values()) {
       if (!nameSlots.length && !declarationName && !inType) continue;
       if (nameSlots.includes('LocalBinding')) continue;
@@ -363,6 +370,7 @@ export async function inspect(
       }
       const choices = signatures(symbol);
       for (const choice of choices) {
+        const discovered = discoveredNames.has(choice.name);
         if (declarationName === 'OperatorDeclaration' && a.program.statements.some((declaration) =>
           declaration.kind === 'operator' && declaration.name === choice.name &&
           (declaration.nameSpan.end < replace.start || declaration.nameSpan.start > replace.end) &&
@@ -378,8 +386,10 @@ export async function inspect(
           if (numericOperand && !isNumeric(actual)) continue;
           if (expected && !isCompatible(actual, expected, a.compatibility, false)) continue;
         }
-        const formal =
-          choice.kind === 'concept' ? p.symbolAliases.concepts : p.symbolAliases.operators;
+        const sourceProfile = discovered ? discovery! : p;
+        const formal = choice.kind === 'concept'
+          ? sourceProfile.symbolAliases.concepts
+          : sourceProfile.symbolAliases.operators;
         const aliases = [
           choice.label || '',
           ...(choice.aliases || []),
@@ -424,6 +434,7 @@ export async function inspect(
           }
         }
         let suggest = smart && snippet;
+        if (discovered && !completeDeclaration) continue;
         if (
           smart &&
           call &&
@@ -446,7 +457,9 @@ export async function inspect(
           continue;
         const origin = choice.declaration
           ? 0
-          : choice.origin && choice.origin.uri !== 'language/core.keh'
+          : discovered
+            ? 3
+            : choice.origin && choice.origin.uri !== 'language/core.keh'
             ? 1
             : 2;
         (directRank < 0 ? descriptionMatches : completions).push({
@@ -474,7 +487,14 @@ export async function inspect(
             origin,
             choice.usage
           ),
-          documentation: choice.description
+          documentation: choice.description,
+          catalogDeclaration: discovered ? {
+            kind: choice.kind === 'operator' ? 'operator' : 'concept',
+            name: choice.name,
+            type: choice.type,
+            params: choice.params,
+            position: previous!.start
+          } : undefined
         });
       }
     }

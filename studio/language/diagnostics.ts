@@ -59,7 +59,9 @@ export function diagnostics(a: Analysis, p: Profile) {
       replacement,
       message,
       detail: message === issue.message ? undefined : issue.message,
-      severity: ['missing-value', 'naming-style'].includes(issue.code) ? 'warning' : 'error'
+      severity: ['builtin-declaration', 'missing-value', 'naming-style'].includes(issue.code)
+        ? 'warning'
+        : 'error'
     };
   });
 }

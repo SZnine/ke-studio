@@ -9,7 +9,7 @@ export function initTheme() {
   };
   function apply(theme: "light" | "dark") {
     root.dataset.theme = theme;
-    button.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icons[theme]}</svg>`;
+    button.innerHTML = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[theme]}</svg>`;
     button.title = theme === "dark" ? "切换为浅色模式" : "切换为深色模式";
     button.setAttribute("aria-label", button.title);
     window.dispatchEvent(new Event("ke-theme"));

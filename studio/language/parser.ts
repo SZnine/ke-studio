@@ -1,4 +1,4 @@
-import { AstUtils, CstUtils, GrammarUtils } from '../framework.mjs';
+import { AstUtils, CstUtils, GrammarUtils } from 'langium';
 import type { Binding, Declaration, Expr, Program, Span, Token, TypeRef } from './ast';
 import { defaults, Profile, SeparatorRole, BinaryOperator } from './profile';
 

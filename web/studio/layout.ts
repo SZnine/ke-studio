@@ -1,48 +1,90 @@
 /** Shared pointer/keyboard resizing for workspace boundaries. */
 export function initLayout() {
   const root = document.documentElement;
+  const sidebarToggle =
+    document.querySelector<HTMLButtonElement>("#sidebar-toggle")!;
+  const sidebar = document.querySelector<HTMLElement>(".sidebar")!;
+  const mobile = matchMedia("(max-width: 760px)");
+  let desktopOpen = localStorage.getItem("ke-studio.sidebar") !== "closed";
+  const setSidebar = (open: boolean) => {
+    document.body.dataset.sidebar = open ? "open" : "closed";
+    const text = open ? "收起侧栏" : "展开侧栏";
+    sidebarToggle.title = text;
+    sidebarToggle.setAttribute("aria-label", text);
+    sidebarToggle.setAttribute("aria-expanded", String(open));
+  };
+  setSidebar(!mobile.matches && desktopOpen);
+  const closeMobileSidebar = () => {
+    if (mobile.matches && document.body.dataset.sidebar === "open") {
+      setSidebar(false);
+      sidebarToggle.focus();
+    }
+  };
+  sidebarToggle.addEventListener("click", () => {
+    const open = document.body.dataset.sidebar !== "open";
+    if (!mobile.matches) {
+      desktopOpen = open;
+      localStorage.setItem("ke-studio.sidebar", open ? "open" : "closed");
+    }
+    setSidebar(open);
+  });
+  document
+    .querySelector(".sidebar-backdrop")!
+    .addEventListener("click", closeMobileSidebar);
+  const quickSearch =
+    document.querySelector<HTMLButtonElement>("#quick-co-search")!;
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeMobileSidebar();
+    if (
+      !event.isComposing &&
+      (event.ctrlKey || event.metaKey) &&
+      event.shiftKey &&
+      !event.altKey &&
+      event.code === "KeyF" &&
+      !document.querySelector("dialog[open]")
+    ) {
+      event.preventDefault();
+      quickSearch.click();
+    }
+  });
+  sidebar.addEventListener("click", (event) => {
+    if (
+      (event.target as HTMLElement).closest(
+        "[data-tab], #quick-co-search, .domain-name, #drafts button",
+      )
+    )
+      closeMobileSidebar();
+  });
+  mobile.addEventListener("change", () =>
+    setSidebar(!mobile.matches && desktopOpen),
+  );
   const size = (selector: string) =>
     document.querySelector<HTMLElement>(selector)!.getBoundingClientRect();
-  const sidebarWidth = () => size(".sidebar").width;
-  const chatWidth = () =>
-    document.body.classList.contains("chat-open") && innerWidth > 1050
-      ? size(".chat-panel").width
-      : 0;
   const specs = [
     {
       name: "sidebar",
       selector: ".sidebar",
       label: "调整左侧栏宽度",
       edge: "right",
-      initial: 220,
-      min: 155,
-      max: () => Math.min(420, innerWidth - chatWidth() - 320),
-    },
-    {
-      name: "chat",
-      selector: ".chat-panel",
-      label: "调整对话栏宽度",
-      edge: "left",
-      initial: 420,
-      min: 300,
-      max: () =>
-        innerWidth > 1050 ? innerWidth - sidebarWidth() - 320 : innerWidth,
+      initial: 244,
+      min: 180,
+      max: () => Math.min(344, innerWidth - 414),
     },
     {
       name: "source",
       selector: ".source-pane",
       label: "调整原文栏宽度",
       edge: "left",
-      initial: 350,
-      min: 230,
-      max: () => size(".annotation-workspace").width - 300,
+      initial: 420,
+      min: 260,
+      max: () => size(".annotation-workspace").width - 330,
     },
     {
       name: "diagnostics",
       selector: ".diagnostics",
       label: "调整底部检查栏高度",
       edge: "top",
-      initial: 86,
+      initial: 110,
       min: 34,
       max: () => size(".diagnostics").height + size("#editor").height - 170,
     },
@@ -151,7 +193,7 @@ export function initLayout() {
   window.addEventListener("resize", fit);
   new MutationObserver(fit).observe(document.body, {
     attributes: true,
-    attributeFilter: ["class"],
+    attributeFilter: ["data-sidebar"],
   });
   new ResizeObserver(fit).observe(document.querySelector("#editor")!);
 }

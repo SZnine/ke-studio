@@ -1,4 +1,4 @@
-import { match } from '../framework.mjs';
+import { match } from 'pinyin-pro';
 
 const normalize = (text: string) => text.normalize('NFKC').toLocaleLowerCase();
 const phonetic = (text: string) =>

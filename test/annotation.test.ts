@@ -419,9 +419,6 @@ it("keeps a valid built-in library unchanged when recompiling language logic", a
       ]),
     ),
   );
-  const next = await createLanguage(
-    files,
-    language.readHeader(files["core.keh"], "language/core.keh").entries,
-  );
+  const next = await createLanguage(files);
   expect(next.coreText).toBe(files["core.keh"]);
 });
