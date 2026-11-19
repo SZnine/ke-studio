@@ -15,6 +15,7 @@ export interface Issue extends Span {
 export interface TypeRef extends Span {
   name: string;
   element?: TypeRef;
+  elements?: TypeRef[];
 }
 export type Expr = Span & { grouped?: boolean } & (
     | { kind: 'id'; name: string }

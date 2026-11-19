@@ -9,7 +9,7 @@ import {
   isNumericType,
   SymbolMetadata
 } from './profile';
-import { isCompatible, isEquivalent, sameParameters } from './types';
+import { isCompatible, isEquivalent, sameParameters, splitTupleType, tupleType } from './types';
 import { CallContract } from './call-contract';
 import { canonicalName, canonicalType, findAliased } from './symbol-aliases';
 export interface Symbol extends SymbolMetadata {
@@ -64,9 +64,10 @@ export interface Analysis {
   comprehensions: Expr[];
   scopes: { span: Span; symbols: Map<string, Symbol>; bindingsStart?: number }[];
   compatibility: Profile['compatibility'];
+  isNumeric?: (type: string) => boolean;
 }
 export const typeName = (t: TypeRef): string =>
-  t.element ? `set{${typeName(t.element)}}` : t.name;
+  t.element ? `set{${typeName(t.element)}}` : t.elements ? tupleType(t.elements.map(typeName)) : t.name;
 /** The same library symbols feed analysis and declaration-name completion. */
 export function globalSymbols(p: Profile): Map<string, Symbol> {
   const symbols = new Map<string, Symbol>();
@@ -245,9 +246,13 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
     references[references.length - 1].target = candidate;
   }
   function checkType(t: TypeRef) {
-    if (t.name === 'operator' && !t.element) return;
+    if (t.name === '?' || t.name === 'operator') return;
     if (t.element) {
       checkType(t.element);
+      return;
+    }
+    if (t.elements) {
+      t.elements.forEach(checkType);
       return;
     }
     ref(t.name, t);
@@ -278,7 +283,7 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
         const parent = typeOf(d.parent),
           name = canonicalName(p.symbolAliases.concepts, d.name);
         checkType(d.parent);
-        if (d.parent.element)
+        if (d.parent.element || d.parent.elements)
           issue(d.parent, 'unknown-type', 'A concept parent must be an object concept.');
         else if (global(parent)?.kind === 'concept') {
           // A built-in concept can be a parent, so documents can write Number and its subtypes.
@@ -313,7 +318,7 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
       let type = '?';
       if (b.type) {
         const value = lookup(b.type.name);
-        if (!b.type.element && value && value.kind !== 'concept') {
+        if (!b.type.element && !b.type.elements && value && value.kind !== 'concept') {
           ref(b.type.name, b.type);
           if (value.type.startsWith('set{')) type = value.type.slice(4, -1);
           else issue(b.type, 'domain', 'A binding domain must be a type or a set value.');
@@ -350,7 +355,7 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
     env = parent;
     return result;
   }
-  function infer(e: Expr, expected?: string, formula = false): string {
+  function infer(e: Expr, expected?: string, formula = false, contextOnly = false): string {
     let t = '?';
     switch (e.kind) {
       case 'id': {
@@ -391,6 +396,7 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
         }
         const quick = (a: Expr | undefined): string => {
           if (!a) return '?';
+          if (a.kind === 'tuple') return tupleType(a.elements.map(quick));
           if (a.kind === 'call') {
             const nested = lookup(a.name);
             if (nested?.kind !== 'operator') return '?';
@@ -521,9 +527,12 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
         t = `set{${element}}`;
         break;
       }
-      case 'tuple':
-        t = `(${e.elements.map((x) => infer(x)).join(', ')})`;
+      case 'tuple': {
+        const items = expected && splitTupleType(expected);
+        const types = items && items.length === e.elements.length ? items : [];
+        t = tupleType(e.elements.map((item, i) => infer(item, types[i], false, true)));
         break;
+      }
       case 'comprehension':
         comprehensions.push(e);
         t = withBody(e.condition, e, () => `set{${infer(e.output)}}`);
@@ -543,7 +552,7 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
         t = withBody(e, e, () => p.booleanType);
         break;
       case 'unary': {
-        if (e.op === p.negationKeyword) {
+        if (p.surface.NegationOperator.includes(e.op)) {
           if (!formula && !p.assertionValues)
             issue(e, 'assertion-value', 'A logical formula is not a value.');
           infer(e.value, p.booleanType, true);
@@ -569,6 +578,7 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
           break;
         }
         const category = table.get(e.op)?.category;
+        const termOr = category === 'logic' && p.surface.OrOperator.includes(e.op);
         if (category === 'equation') {
           equationDepth++;
           infer(e.left, p.numberLiteralType);
@@ -581,6 +591,7 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
         }
         if (
           ['assertion', 'ordering', 'membership', 'logic'].includes(category ?? '') &&
+          !termOr &&
           !formula &&
           !p.assertionValues
         )
@@ -590,8 +601,8 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
             'A formula is not a value. Use a Bool-returning operator such as is_equal().'
           );
         if (category === 'logic') {
-          infer(e.left, p.booleanType, true);
-          infer(e.right, p.booleanType, true);
+          infer(e.left, p.booleanType, formula || !termOr);
+          infer(e.right, p.booleanType, formula || !termOr);
           t = p.booleanType;
           break;
         }
@@ -623,7 +634,10 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
                 : x.kind === 'binary' && table.get(x.op)?.category === 'equation'
                   ? p.equationType
                   : undefined;
-        let left = infer(e.left, known(e.left) ? undefined : known(e.right));
+        const numericOperands = category === 'arithmetic' || category === 'ordering';
+        // Keep contextual typing for operators such as unit(). Each numeric operand
+        // can have its own subtype and must not be assignable to the other one.
+        let left = infer(e.left, known(e.left) ? undefined : known(e.right), false, numericOperands);
         if (
           e.op === p.surface.Assign[0] &&
           e.left.kind === 'id' &&
@@ -643,11 +657,17 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
           !known(e.right)!.startsWith('set{');
         const right = infer(
           e.right,
-          left === '?' ? undefined : memberFact ? left.slice(4, -1) : left
+          left === '?' ? undefined : memberFact ? left.slice(4, -1) : left,
+          false,
+          numericOperands
         );
         if (category === 'assertion' || category === 'ordering') t = p.booleanType;
-        else t = left === '?' ? right : left;
-        if (category === 'arithmetic' || category === 'ordering')
+        else if (category === 'arithmetic' && numeric(left) && numeric(right)) {
+          if (isCompatible(right, left, relations, false)) t = left;
+          else if (isCompatible(left, right, relations, false)) t = right;
+          else t = p.numberLiteralType;
+        } else t = left === '?' ? right : left;
+        if (numericOperands)
           for (const [ty, node] of [
             [left, e.left],
             [right, e.right]
@@ -658,7 +678,7 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
       }
     }
     types.set(e, t);
-    if (expected) compare(t, expected, e);
+    if (expected && !contextOnly) compare(t, expected, e);
     return t;
   }
   for (const s of program.statements) {
@@ -714,7 +734,8 @@ export function analyzeProgram(program: Program, p: Profile = defaults, source =
     types,
     comprehensions,
     scopes,
-    compatibility: relations
+    compatibility: relations,
+    isNumeric: numeric
   };
 }
 export const displayType = (type: string) =>

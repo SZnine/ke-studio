@@ -7,7 +7,7 @@ import {
   Profile,
   SymbolMetadata
 } from './profile';
-import { isCompatible } from './types';
+import { isCompatible, typeParts } from './types';
 import { typeName } from './semantic';
 import { Library } from './library';
 import { Issue, Span } from './ast';
@@ -278,7 +278,7 @@ export function renderEntry(e: Entry): string {
     );
     const d = parsed.statements[0];
     if (parsed.issues.length || parsed.statements.length !== 1 || d?.kind !== 'constant' || !d.type)
-      throw new Error('请输入类型名称或 set(类型)。');
+      throw new Error('请输入类型名称、set(类型) 或 tuple(类型, 类型)。');
     return d.type;
   };
   const type = (s: string) =>
@@ -438,9 +438,7 @@ export function combineLibraries(
       )
     ]);
     const valid = (t: string): boolean =>
-      t === 'operator' ||
-      types.has(t) ||
-      (t.startsWith('set{') && t.endsWith('}') && valid(t.slice(4, -1)));
+      t === 'operator' || types.has(t) || (typeParts(t)?.every(valid) ?? false);
     const operators = new Set([
       ...Object.keys(base.operators),
       ...loaded.flatMap((x, i) =>

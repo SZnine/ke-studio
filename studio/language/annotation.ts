@@ -2,7 +2,7 @@ import { globalSymbols, signatures, typeName, type Analysis } from './semantic';
 import { describeDeclaration } from './editor';
 import type { Profile } from './profile';
 import type { Declaration, Span } from './ast';
-import { isEquivalent, sameParameters } from './types';
+import { isEquivalent, sameParameters, typeParts } from './types';
 
 export interface AnnotationRequest {
   kind: 'concept' | 'operator';
@@ -62,8 +62,9 @@ export function annotate(source: string, request: AnnotationRequest, a: Analysis
     );
   };
   const includeType = (type: string) => {
-    const name = type.replace(/set\{/g, '').replaceAll('}', '');
-    concept(name);
+    const parts = typeParts(type);
+    if (parts) parts.forEach(includeType);
+    else if (type !== 'operator') concept(type);
   };
   let declaration = '',
     existing: Declaration | undefined;
@@ -95,7 +96,7 @@ export function annotate(source: string, request: AnnotationRequest, a: Analysis
     const required = existing?.type
       ? [...existing.params.map(typeName), typeName(existing.type!)]
       : [...selected.params, selected.type];
-    for (const type of required) if (type !== 'operator') includeType(type);
+    required.forEach(includeType);
     declaration = `${p.operatorAliases[0]} ${describeDeclaration(selected, p)}${p.style.statement}`;
     if (!existing) append(1, declaration, request.name);
   }

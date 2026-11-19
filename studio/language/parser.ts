@@ -2,6 +2,8 @@ import { AstUtils, CstUtils, GrammarUtils } from '../framework.mjs';
 import type { Binding, Declaration, Expr, Program, Span, Token, TypeRef } from './ast';
 import { defaults, Profile, SeparatorRole, BinaryOperator } from './profile';
 
+export const tupleConstructors: readonly string[] = ['tuple', 'tupleof'];
+const isTupleConstructor = (name: string): boolean => tupleConstructors.includes(name);
 let services: any;
 export const syntaxServices = () => services;
 const roles: Record<string, SeparatorRole> = {
@@ -144,15 +146,30 @@ export function parse(source: string, p: Profile = defaults): Program {
           replacement: wanted
         });
     }
-  const type = (n: any): TypeRef =>
-    n?.element
-      ? { name: 'set', element: type(n.element), ...span(n) }
-      : { name: n?.name || '?', ...span(n) };
+  const type = (n: any): TypeRef => {
+    if (n?.element) return { name: 'set', element: type(n.element), ...span(n) };
+    if (n?.$type === 'AppliedType') {
+      if (isTupleConstructor(n.name))
+        return { name: 'tuple', elements: (n.elements ?? []).map(type), ...span(n) };
+      program.issues.push({
+        ...propertySpan(n, 'name'),
+        code: 'syntax',
+        message: '类型位置只接受概念名称、set(...) 或 tuple(...)。'
+      });
+      return { name: '?', ...span(n) };
+    }
+    return { name: n?.name || '?', ...span(n) };
+  };
   const asType = (e: Expr): TypeRef | undefined => {
     if (e.kind === 'id') return { name: e.name, start: e.start, end: e.end };
     if (e.kind === 'call' && e.name === p.keywords.set && e.args.length === 1) {
       const element = asType(e.args[0]);
       if (element) return { name: 'set', element, start: e.start, end: e.end };
+    }
+    if (e.kind === 'call' && isTupleConstructor(e.name) && e.args.length) {
+      const elements = e.args.map(asType);
+      if (elements.every((element): element is TypeRef => element !== undefined))
+        return { name: 'tuple', elements, start: e.start, end: e.end };
     }
   };
   const missing = (n: any): Expr => ({ kind: 'id', name: '?', ...span(n) });
@@ -222,7 +239,7 @@ export function parse(source: string, p: Profile = defaults): Program {
       case 'NegationExpression':
         return { kind: 'unary', op: n.op, value: expr(n.value), ...s };
       case 'Group':
-        return n.elements?.length === 1
+        return n.elements?.length === 1 && !n.trailing
           ? { ...expr(n.elements[0]), grouped: true, ...s }
           : { kind: 'tuple', elements: (n.elements ?? []).map(expr), ...s };
       case 'SetExpression':

@@ -166,12 +166,19 @@ output = { (x1,x2,x3) | x1: set(Real), x2: set(Real), `;
       expect(result.map((c) => c.name)).toContain("Real");
       expect(
         result.every(
-          (c) => c.kind === "type" || c.name === "set" || c.name === "operator",
+          (c) => c.kind === "type" || ["set", "tuple", "tupleof", "operator"].includes(c.name),
         ),
       ).toBe(true);
       expect(result.map((c) => c.name)).not.toEqual(
         expect.arrayContaining(["x1", "sqrt", "real_measure"]),
       );
+    }
+  });
+  it("completes types inside tuple signatures and nested collection declarations", async () => {
+    for (const source of ["op pair(tuple(Po§, Point)) : Point;", "pairs : set(tuple(Po§, Point));"]) {
+      const result = await complete(source);
+      expect(result.map((c) => c.name)).toContain("Point");
+      expect(result.every((c) => c.kind === "type")).toBe(true);
     }
   });
   it("keeps blank clause separators quiet while manual and argument completion remain available", async () => {

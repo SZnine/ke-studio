@@ -1,7 +1,7 @@
 import { TextDocument } from '../framework.mjs';
 import { Analysis, displayType, signature, signatures, globalSymbols, Symbol, typeName } from './semantic';
-import { Profile, operatorTable } from './profile';
-import { syntaxServices } from './parser';
+import { Profile, isNumericType, operatorTable } from './profile';
+import * as parser from './parser';
 import { completionSearchRank } from './completion-search';
 import { isCompatible, sameParameters } from './types';
 import type { Token } from './ast';
@@ -169,19 +169,22 @@ export async function inspect(
   }
   const frame = frames.at(-1);
   const depth = frames.length;
-  const insideSetType =
+  const call = callAt({ ...a, symbols }, offset, p);
+  const tupleConstructors = p.surface.AppliedType ? (parser.tupleConstructors ?? []) : [];
+  const typeConstructors = [...p.surface.SetKeyword, ...tupleConstructors];
+  const insideConstructedType =
     !!frame &&
     p.surface.CallOpen.includes(frame.token.text) &&
-    p.surface.SetKeyword.includes(frame.name || '');
+    typeConstructors.includes(frame.name || '') &&
+    (!call || frames.some((opened) => p.surface.SetKeyword.includes(opened.name || '')));
   const statementStart =
     !depth && (!previous || p.surface.StatementSeparator.includes(previous.text));
   const next = a.program.tokens.find(
     (t) => t.start >= replace.end && !['comment', 'eof'].includes(t.kind)
   );
-  const call = callAt({ ...a, symbols }, offset, p);
   const completions: any[] = [];
   const descriptionMatches: any[] = [];
-  const services = syntaxServices();
+  const services = parser.syntaxServices();
   const smart = options.callStyle === 'smart';
   if (!blocked && options.enabled !== false) {
     // Completion only needs text positions; constructing a LangiumDocument reparses the whole file.
@@ -196,10 +199,10 @@ export async function inspect(
         while (node && node.$type !== 'ParserRule') node = node.$container;
         return node?.name;
       });
-    // Membership domains are expressions in the grammar, but set(T) still takes a type.
-    const inType = insideSetType || nameSlots.includes('NamedType');
+    // Membership domains are expressions in the grammar. Their constructors take types.
+    const inType = insideConstructedType || nameSlots.includes('NamedType');
     const declarationName =
-      previous?.text === p.keywords.concept
+      p.surface.ConceptKeyword.includes(previous?.text || '')
         ? 'ConceptDeclaration'
         : p.operatorAliases.includes(previous?.text || '')
           ? 'OperatorDeclaration'
@@ -208,9 +211,9 @@ export async function inspect(
             : undefined;
     const domainPosition =
       inType || [...p.surface.Colon, ...p.surface.Subtype].includes(previous?.text || '');
-    const typeKeywords = new Set([...p.surface.SetKeyword, ...(p.surface.NamedType || [])]);
+    const typeKeywords = new Set([...typeConstructors, ...(p.surface.NamedType || [])]);
     const constructorPrefix =
-      domainPosition && !!prefix && p.surface.SetKeyword.some((name) => name.startsWith(prefix));
+      domainPosition && !!prefix && typeConstructors.some((name) => name.startsWith(prefix));
     const clauseGap =
       !prefix &&
       !!frame?.filtered &&
@@ -292,18 +295,22 @@ export async function inspect(
       .filter(([expression]) => expression.end === leftEnd)
       .sort(([a], [b]) => a.start - b.start);
     const leftType = leftTypes[0]?.[1] || symbols.get(before.at(-2)?.text || '')?.type;
+    const numericOperand = operator?.category === 'arithmetic' || operator?.category === 'ordering';
+    // A workspace may retain a customized semantic module from an earlier default.
+    const isNumeric = a.isNumeric ?? ((type: string) =>
+      isNumericType(type, p) || isCompatible(type, p.numberLiteralType, a.compatibility, false));
     const expected =
-      operator?.category === 'arithmetic'
-        ? p.numberLiteralType
-        : operator && ['assertion', 'ordering'].includes(operator.category) && leftType !== '?'
+      numericOperand
+        ? undefined
+        : operator?.category === 'assertion' && leftType !== '?'
           ? leftType
           : call?.choices[call.activeSignature].params[call.frame.index];
-    const starts = [
+    const declarationStarts = [
       p.keywords.concept,
       p.operatorAliases[0],
-      p.keywords.constant,
-      ...p.outputNames
+      p.keywords.constant
     ];
+    const starts = [...declarationStarts, ...p.outputNames];
     const declarationPrefix =
       statementStart && starts.some((name) => name.toLowerCase().startsWith(prefix.toLowerCase()));
     const arithmeticGap = !prefix && operator?.category === 'arithmetic';
@@ -361,14 +368,15 @@ export async function inspect(
           (declaration.nameSpan.end < replace.start || declaration.nameSpan.start > replace.end) &&
           sameParameters(declaration.params.map(typeName), choice.params, a.compatibility)))
           continue;
-        if (expected && !domainPosition && !declarationName) {
+        if ((expected || numericOperand) && !domainPosition && !declarationName) {
           const actual =
             choice.kind === 'concept'
               ? `set{${choice.type}}`
               : choice.kind === 'operator' && expected === 'operator'
                 ? 'operator'
                 : choice.type;
-          if (!isCompatible(actual, expected, a.compatibility, false)) continue;
+          if (numericOperand && !isNumeric(actual)) continue;
+          if (expected && !isCompatible(actual, expected, a.compatibility, false)) continue;
         }
         const formal =
           choice.kind === 'concept' ? p.symbolAliases.concepts : p.symbolAliases.operators;
@@ -470,11 +478,16 @@ export async function inspect(
         });
       }
     }
-    // Use only the viable features at this position. Backtracking to the previous
-    // keyword would incorrectly re-offer `concept` after the user has finished it.
-    if (!declarationName)
-      for (const feature of features) {
-        const name = feature.feature.$type === 'Keyword' ? feature.feature.value : '';
+    if (!declarationName) {
+      const keywords = new Set<string>();
+      for (const { feature } of features)
+        if (feature.$type === 'Keyword') keywords.add(feature.value);
+      if (domainPosition && tupleConstructors[0]) keywords.add(tupleConstructors[0]);
+      // With an optional final terminator, a partial declaration keyword can
+      // parse as a finished expression. Restore declaration choices at its start.
+      if (statementStart)
+        for (const name of declarationStarts) keywords.add(name);
+      for (const name of keywords) {
         if (inType && !typeKeywords.has(name)) continue;
         if (
           !/^[_\p{L}]/u.test(name) ||
@@ -488,8 +501,8 @@ export async function inspect(
           if (!statementStart && !prefix && !domainPosition) continue;
           if (p.operatorAliases.includes(name) && name !== p.operatorAliases[0]) continue;
         }
-        const setConstructor = domainPosition && p.surface.SetKeyword.includes(name);
-        const snippet = setConstructor && !p.surface.CallOpen.includes(next?.text || '');
+        const typeConstructor = domainPosition && typeConstructors.includes(name);
+        const snippet = typeConstructor && !p.surface.CallOpen.includes(next?.text || '');
         completions.push({
           name,
           detail: '语法',
@@ -499,11 +512,12 @@ export async function inspect(
           replace,
           filter: prefix || name,
           sort: order(
-            statementStart || (setConstructor && constructorPrefix) ? 0 : 2,
+            statementStart || (typeConstructor && constructorPrefix) ? 0 : 2,
             Math.max(0, starts.indexOf(name))
           )
         });
       }
+    }
     if (statementStart)
       for (const name of p.outputNames)
         if (

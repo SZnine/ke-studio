@@ -209,11 +209,21 @@ async function showIssues() {
   const issues = await ke.diagnostics(),
     container = $("#issues");
   if (!issues) return;
-  const errors = issues.filter((i) => i.severity === "error").length;
-  const warnings = issues.length - errors;
+  const isSyntax = (issue: { code?: string }) =>
+    issue.code === "syntax" || issue.code === "separator";
+  const errors = issues.filter((i) => i.severity === "error");
+  const syntax = errors.filter(isSyntax).length;
+  const service = errors.filter((i) => i.code === "service").length;
+  const semantic = errors.length - syntax - service;
+  const warnings = issues.length - errors.length;
   $("#diagnostic-count").textContent = issues.length
     ? "检查 · " +
-      [errors ? `${errors} 个问题` : "", warnings ? `${warnings} 个提示` : ""]
+      [
+        syntax ? `${syntax} 处语法` : "",
+        semantic ? `${semantic} 处语义` : "",
+        service ? "检查服务异常" : "",
+        warnings ? `${warnings} 个提示` : "",
+      ]
         .filter(Boolean)
         .join(" · ")
     : ke.getText().trim()
@@ -228,8 +238,16 @@ async function showIssues() {
       `issue ${issue.severity}`,
     );
     const position = ke.editor.getModel()!.getPositionAt(issue.start);
+    const label =
+      issue.severity === "warning"
+        ? "提示"
+        : isSyntax(issue)
+          ? "语法"
+          : issue.code === "service"
+            ? "服务"
+            : "语义";
     item.append(
-      node("span", `L${position.lineNumber}`),
+      node("span", `L${position.lineNumber} · ${label}`),
       node("span", issue.message, "issue-message"),
     );
     row.append(item);
