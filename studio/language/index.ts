@@ -145,6 +145,8 @@ export function createLanguageFromCompiled(
         ...new Set([
           ' ',
           defaults.surface.Colon[0],
+          defaults.surface.Assign[0],
+          defaults.surface.Filter[0],
           defaults.surface.CallOpen[0],
           defaults.surface.ProjectionOpen[0],
           defaults.style.argument,
@@ -173,17 +175,24 @@ export function createLanguageFromCompiled(
         if (!request) return true;
         delete item.catalogDeclaration;
         try {
-          const plan = annotate(text, request, analysis, discovery, false);
-          if (request.kind === 'concept') {
+          const plan = annotate(text, request, analysis, discovery, request.inBody);
+          if (plan.draft) return false;
+          if (request.kind === 'concept' && !request.inBody) {
             const target = plan.declaration.slice(p.keywords.concept.length + 1, -p.style.statement.length);
             item.insert = target + item.insert.slice(request.name.length);
           }
-          item.edits = [
-            ...(item.edits || []),
-            ...plan.edits.map((edit) => edit.start <= request.position ? edit : {
-              start: request.position, end: request.position, text: edit.text.trimStart()
-            })
-          ];
+          const insertions = new Map<number, string>();
+          for (const edit of plan.edits) {
+            const start = Math.min(edit.start, request.position);
+            const value = start === edit.start ? edit.text : edit.text.trimStart();
+            insertions.set(start, (insertions.get(start) ?? '') + value);
+          }
+          item.edits ??= [];
+          for (const [start, value] of insertions) {
+            if (start === item.replace.start)
+              item.insert = (item.snippet ? value.replace(/[\\$}]/g, '\\$&') : value) + item.insert;
+            else item.edits.push({ start, end: start, text: value });
+          }
           return true;
         } catch {
           return false;

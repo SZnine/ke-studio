@@ -78,7 +78,6 @@ export async function api<T = Workspace>(
   return rpc<T>(url, method, data ?? {});
 }
 
-/** Keep retrying after the initial failure; a failed boot is not an initialized editor. */
 export function createWorkspaceLoader(options: {
   selected(): string;
   loaded(state: Workspace): void;
@@ -86,22 +85,31 @@ export function createWorkspaceLoader(options: {
   read?: (url: string) => Promise<Workspace>;
 }) {
   let pending = false;
+  let queued = false;
   const read = options.read || api<Workspace>;
   return async () => {
-    if (pending) return;
+    if (pending) {
+      queued = true;
+      return;
+    }
     pending = true;
-    const selected = options.selected();
     try {
-      const [domain, question, draft] = selected.split("|");
-      const next = await read(
-        `/api/state?domain=${encodeURIComponent(domain)}${question ? "&question=" + encodeURIComponent(question) + (draft ? "&draft=true" : "") : ""}`,
-      ).catch((error) => {
-        if (error.message === "领域不存在。") return read("/api/state");
-        throw error;
-      });
-      if (selected === options.selected()) options.loaded(next);
-    } catch (error) {
-      options.failed(error);
+      do {
+        queued = false;
+        const selected = options.selected();
+        const [domain, question, draft] = selected.split("|");
+        try {
+          const next = await read(
+            `/api/state?domain=${encodeURIComponent(domain)}${question ? "&question=" + encodeURIComponent(question) + (draft ? "&draft=true" : "") : ""}`,
+          ).catch((error) => {
+            if (error.message === "领域不存在。") return read("/api/state");
+            throw error;
+          });
+          if (selected === options.selected()) options.loaded(next);
+        } catch (error) {
+          if (selected === options.selected()) options.failed(error);
+        }
+      } while (queued);
     } finally {
       pending = false;
     }

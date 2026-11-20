@@ -368,24 +368,143 @@ it("switches draft scope and rejects a snapshot from the previous language servi
 
 it("finds declarations used in other banks without expanding the document's semantic scope", async () => {
   put("ke-workspace.json", {
-    id: "test", activeBank: "default", banks: [
-      { id: "default", name: "当前" }, { id: "previous", name: "旧题库" },
+    id: "test",
+    activeBank: "default",
+    banks: [
+      { id: "default", name: "当前" },
+      { id: "previous", name: "旧题库" },
     ],
   });
   put("banks/previous/questions/other/01.json", {
-    id: "01", number: "01", prompt: "", notes: "", updated: "",
+    id: "01",
+    number: "01",
+    prompt: "",
+    notes: "",
+    updated: "",
     ke: "concept Archived; op archived_measure(Archived) : Real; op range(Archived) : Real;",
   });
   const text = "concept Number; range : set(Number); range = {1, 2};";
   const before = await store.workspace("child");
-  const beforeResult = await store.inspectEditor({ ...input(before.editorContext), text });
+  const beforeResult = await store.inspectEditor({
+    ...input(before.editorContext),
+    text,
+  });
   await store.indexCo();
+  disk.reads.mockClear();
+  expect(
+    names(await store.inspectEditor(input(before.editorContext))),
+  ).toContain("archived_measure");
+  expect(disk.reads).not.toHaveBeenCalled();
   const after = await store.workspace("child");
-  expect(after.usedEntries.map((entry) => entry.name)).toContain("archived_measure");
-  expect(names(await store.inspectEditor(input(after.editorContext)))).toContain("archived_measure");
-  const afterResult = await store.inspectEditor({ ...input(after.editorContext), text });
+  expect(after.usedEntries.map((entry) => entry.name)).toContain(
+    "archived_measure",
+  );
+  expect(
+    names(await store.inspectEditor(input(after.editorContext))),
+  ).toContain("archived_measure");
+  const afterResult = await store.inspectEditor({
+    ...input(after.editorContext),
+    text,
+  });
   expect("issues" in beforeResult && beforeResult.issues).toEqual([]);
   expect("issues" in afterResult && afterResult.issues).toEqual([]);
+});
+
+it("indexes the questions already read on opening their domain", async () => {
+  put("banks/default/questions/child/01.json", {
+    id: "01",
+    number: "01",
+    prompt: "",
+    notes: "",
+    updated: "",
+    ke: "concept Vector; op vector_length(Vector) : Real;",
+  });
+  const state = await store.workspace("child", "01");
+  expect(state.usedEntries.map((entry) => entry.name)).toContain(
+    "vector_length",
+  );
+  expect(
+    names(await store.inspectEditor(input(state.editorContext))),
+  ).toContain("vector_length");
+});
+
+it("includes a catalog update published while the workspace is opening", async () => {
+  let beginState!: () => void;
+  let finishState!: () => void;
+  const entered = new Promise<void>((resolve) => (beginState = resolve));
+  const finish = new Promise<void>((resolve) => (finishState = resolve));
+  const originalState = engine.state.bind(engine);
+  Object.assign(engine, {
+    async state() {
+      beginState();
+      await finish;
+      return originalState();
+    },
+  });
+  const pending = store.workspace("child");
+  await entered;
+  store.catalog.update(
+    language,
+    "default/other/questions/01",
+    "op concurrent_length(Shape) : Real;",
+  );
+  finishState();
+  const state = await pending;
+  expect(state.usedEntries.map((entry) => entry.name)).toContain(
+    "concurrent_length",
+  );
+  expect(
+    names(await store.inspectEditor(input(state.editorContext))),
+  ).toContain("concurrent_length");
+});
+
+it("reuses an open editor context after a save in another question without reading disk", async () => {
+  put("banks/default/questions/other/01.json", {
+    id: "01",
+    number: "01",
+    prompt: "",
+    notes: "",
+    updated: "",
+    ke: "concept Vector; op stale_length(Vector) : Real;",
+  });
+  const open = await store.workspace("child");
+  const staleRead = store.catalog.readStamp;
+  await store.saveQuestion("other", {
+    id: "01",
+    ke: "concept Vector; op saved_length(Vector) : Real;",
+  });
+  store.catalog.observe(
+    language,
+    "default/other/questions/01",
+    "op stale_length(Vector) : Real;",
+    staleRead,
+  );
+  disk.reads.mockClear();
+  disk.writes.mockClear();
+  const completions = names(
+    await store.inspectEditor(input(open.editorContext)),
+  );
+  expect(completions).toContain("saved_length");
+  expect(completions).not.toContain("stale_length");
+  expect(disk.reads).not.toHaveBeenCalled();
+  expect(disk.writes).not.toHaveBeenCalled();
+});
+
+it("keeps a malformed historical definition from hiding unrelated completion candidates", async () => {
+  put("banks/default/questions/child/01.json", {
+    id: "01",
+    number: "01",
+    prompt: "",
+    notes: "",
+    updated: "",
+    ke: "op malformed(a : Point, a : Point) : Real; op valid_length(Point) : Real;",
+  });
+  const state = await store.workspace("child", "01");
+  const completions = names(
+    await store.inspectEditor(input(state.editorContext)),
+  );
+  expect(completions).toContain("valid_length");
+  expect(completions).not.toContain("malformed");
 });
 
 it("keeps conflicting historical definitions searchable without guessing a signature", async () => {

@@ -28,6 +28,26 @@ const contextKey = (input: object) =>
     0,
     16,
   );
+type LibraryRecords = Awaited<ReturnType<Store["libraries"]>>;
+type Profile = ReturnType<Language["context"]>;
+
+interface DiscoveryScope {
+  layers: Entry[][];
+  preferred: Entry[];
+}
+
+interface EditorContext {
+  language: Language;
+  revision: string;
+  profile: Profile | Error;
+  libraries: LibraryRecords;
+  usage: Record<string, number>;
+  scope: DiscoveryScope;
+  catalogRevision: number;
+  fallback: Entry[];
+  discovery?: Profile;
+}
+
 export interface Change {
   id: string;
   time: string;
@@ -42,15 +62,7 @@ export class Store {
   readonly questions: Questions;
   readonly drafts: Questions;
   private queue = Promise.resolve();
-  private editorContexts = new Map<
-    string,
-    {
-      language: Language;
-      revision: string;
-      profile: ReturnType<Language["context"]> | Error;
-      discovery?: ReturnType<Language["context"]>;
-    }
-  >();
+  private editorContexts = new Map<string, EditorContext>();
   constructor(
     readonly root: string,
     readonly engine: LanguageEngine,
@@ -102,6 +114,7 @@ export class Store {
     const domains = await this.domains();
     const domain = domains.find((item) => item.id === id);
     if (!domain) throw new Error("领域不存在。");
+    const readStamp = this.catalog.readStamp;
     const [local, questions, drafts, usageFile, allLibraries] =
       await Promise.all([
         workspaceInfo(),
@@ -118,7 +131,21 @@ export class Store {
         ? question.coScope
         : undefined;
     const preference = scopeIds(domains, id, scope);
+    const languageState = await this.engine.state();
     const service = this.engine.service;
+    const bank = this.root.split("/").at(-1)!;
+    for (const [collection, documents] of [
+      ["questions", questions],
+      ["drafts", drafts],
+    ] as const) {
+      for (const doc of documents)
+        this.catalog.observe(
+          service,
+          `${bank}/${id}/${collection}/${doc.id}`,
+          doc.ke,
+          readStamp,
+        );
+    }
     const coreEntries = service.coreEntries;
     const libraries = allLibraries.map((lib) => ({
       ...lib,
@@ -133,30 +160,34 @@ export class Store {
     const topicSeed = starterLibraries.find((lib) => lib.domain === topic);
     const usedEntries = this.catalog.entries;
     const scopedEntries = scoped.flatMap((lib) => lib.entries);
-    const fallback = supplementalCo(
-      [
+    const discoveryScope = {
+      layers: [
         other.flatMap((lib) => lib.entries),
         topicSeed?.entries ?? [],
         starterLibraries
           .filter((lib) => lib !== topicSeed)
           .flatMap((lib) => lib.entries),
-        usedEntries,
       ],
-      scopedEntries,
-      coreEntries,
-    );
+      preferred: scopedEntries,
+    };
+    const fallback = this.fallbackEntries(service, discoveryScope);
     const usage = JSON.parse(usageFile || "{}");
     return {
       storage: {
         folder: this.folder,
-        bank: this.root.split("/").at(-1)!,
+        bank,
         banks: local.banks,
       },
       version,
       domains,
       domain,
-      language: await this.engine.state(),
-      editorContext: this.prepareEditorContext(scoped, usage, fallback),
+      language: languageState,
+      editorContext: this.prepareEditorContext(
+        scoped,
+        usage,
+        discoveryScope,
+        fallback,
+      ),
       libraries,
       starterLibraries,
       usedEntries,
@@ -168,9 +199,58 @@ export class Store {
       usage,
     };
   }
-  private prepareEditorContext(
-    libraries: Awaited<ReturnType<Store["libraries"]>>,
+  private fallbackEntries(language: Language, scope: DiscoveryScope) {
+    return supplementalCo(
+      [...scope.layers, this.catalog.entries],
+      scope.preferred,
+      language.coreEntries,
+    );
+  }
+
+  private discoveryProfile(
+    language: Language,
+    libraries: LibraryRecords,
     usage: Record<string, number>,
+    fallback: Entry[],
+    preferred: Entry[],
+  ) {
+    if (!fallback.length) return;
+    const rendered = new Map<Entry, string>();
+    for (const entry of fallback) {
+      try {
+        rendered.set(entry, language.renderEntry(entry));
+      } catch {
+        // Historical declarations remain searchable while invalid signatures stay out of completion.
+      }
+    }
+    const available =
+      rendered.size === fallback.length
+        ? fallback
+        : supplementalCo(
+            [[...rendered.keys()]],
+            preferred,
+            language.coreEntries,
+          );
+    if (!available.length) return;
+    try {
+      const text = available.map((entry) => rendered.get(entry)!).join("\n");
+      return language.context(
+        [
+          ...scopedSources(language, libraries),
+          { id: "catalog", name: "CO 索引", text },
+        ],
+        usage,
+      );
+    } catch {
+      // A conflicting optional definition must not prevent the current question from opening.
+      return;
+    }
+  }
+
+  private prepareEditorContext(
+    libraries: LibraryRecords,
+    usage: Record<string, number>,
+    scope: DiscoveryScope,
     fallback: Entry[],
   ) {
     const { service: language, revision } = this.engine.active!;
@@ -178,31 +258,15 @@ export class Store {
       revision,
       libraries: libraries.map(({ id, name, text }) => ({ id, name, text })),
       usage,
+      layers: scope.layers,
       fallback,
     });
     if (this.editorContexts.get(key)?.language !== language) {
       if (this.editorContexts.size >= 8)
         this.editorContexts.delete(this.editorContexts.keys().next().value!);
-      let profile: ReturnType<Language["context"]> | Error;
-      let discovery: ReturnType<Language["context"]> | undefined;
+      let profile: Profile | Error;
       try {
         profile = this.context(libraries, usage, language);
-        if (fallback.length) {
-          try {
-            const discovered = fallback
-              .map((entry) => language.renderEntry(entry))
-              .join("\n");
-            discovery = language.context(
-              [
-                ...scopedSources(language, libraries),
-                { id: "catalog", name: "CO 索引", text: discovered },
-              ],
-              usage,
-            );
-          } catch {
-            // A conflicting optional definition must not prevent the current question from opening.
-          }
-        }
       } catch (error) {
         // Keep the library editor accessible when an externally edited CO file is invalid.
         profile = error instanceof Error ? error : new Error(String(error));
@@ -211,7 +275,21 @@ export class Store {
         language,
         revision,
         profile,
-        discovery,
+        libraries,
+        usage,
+        scope,
+        fallback,
+        catalogRevision: this.catalog.revision,
+        discovery:
+          profile instanceof Error
+            ? undefined
+            : this.discoveryProfile(
+                language,
+                libraries,
+                usage,
+                fallback,
+                scope.preferred,
+              ),
       });
     }
     return key;
@@ -239,8 +317,28 @@ export class Store {
       snapshot = this.editorContexts.get(state.editorContext);
     }
     if (!snapshot) throw new Error("语言服务尚未就绪。");
-    const { language, revision, profile, discovery } = snapshot;
+    const { language, revision, profile } = snapshot;
     if (profile instanceof Error) throw profile;
+    if (
+      snapshot.catalogRevision !== this.catalog.revision &&
+      (input.annotation ||
+        (!format && !input.move && input.completion?.enabled !== false))
+    ) {
+      // A save or background scan can finish before the browser receives the new workspace snapshot.
+      const fallback = this.fallbackEntries(language, snapshot.scope);
+      if (JSON.stringify(fallback) !== JSON.stringify(snapshot.fallback)) {
+        snapshot.discovery = this.discoveryProfile(
+          language,
+          snapshot.libraries,
+          snapshot.usage,
+          fallback,
+          snapshot.scope.preferred,
+        );
+        snapshot.fallback = fallback;
+      }
+      snapshot.catalogRevision = this.catalog.revision;
+    }
+    const { discovery } = snapshot;
     return {
       ...(input.annotation
         ? language.annotate(input.text, input.annotation, profile, discovery)

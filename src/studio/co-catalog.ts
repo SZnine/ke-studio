@@ -43,36 +43,57 @@ interface SourceDocument {
 
 /** Session index of documented concepts and operators across the mounted banks. */
 export class CoCatalog {
-  private documents = new Map<string, { text: string; entries: Entry[] }>();
+  private documents = new Map<
+    string,
+    { text: string; entries: Entry[]; observedAt: number }
+  >();
   private scan?: Promise<void>;
   private removedDomains = new Set<string>();
-  private version = 0;
+  private observed = 0;
+  private definitionsVersion = 0;
   private cached?: { version: number; entries: Entry[] };
+
+  get revision() {
+    return this.definitionsVersion;
+  }
+
+  get readStamp() {
+    return this.observed;
+  }
 
   load(language: Language, documents: () => AsyncIterable<SourceDocument>) {
     return (this.scan ??= (async () => {
-      // Records saved while enumeration is running take precedence over the earlier reads.
-      for await (const { key, text } of documents()) {
-        if (
-          !this.documents.has(key) &&
-          !this.removedDomains.has(key.split("/")[1])
-        )
-          this.update(language, key, text);
-      }
+      const stamp = this.readStamp;
+      for await (const { key, text } of documents())
+        this.observe(language, key, text, stamp);
     })().catch((error) => {
       this.scan = undefined;
       throw error;
     }));
   }
 
+  observe(language: Language, key: string, text: string, stamp: number) {
+    // Workspaces and the bank scan can read while a save is in flight. Use the newer value.
+    if (
+      (this.documents.get(key)?.observedAt ?? 0) > stamp ||
+      this.removedDomains.has(key.split("/")[1])
+    )
+      return;
+    this.update(language, key, text);
+  }
+
   update(language: Language, key: string, text: string) {
     const previous = this.documents.get(key);
-    if (previous?.text === text) return false;
+    const observedAt = ++this.observed;
+    if (previous?.text === text) {
+      previous.observedAt = observedAt;
+      return false;
+    }
     const entries = documentCo(language, text);
-    this.documents.set(key, { text, entries });
+    this.documents.set(key, { text, entries, observedAt });
     if (JSON.stringify(previous?.entries ?? []) === JSON.stringify(entries))
       return false;
-    this.version++;
+    this.definitionsVersion++;
     return true;
   }
 
@@ -80,7 +101,7 @@ export class CoCatalog {
     for (const id of ids) this.removedDomains.add(id);
     for (const key of this.documents.keys()) {
       if (!this.removedDomains.has(key.split("/")[1])) continue;
-      if (this.documents.get(key)!.entries.length) this.version++;
+      if (this.documents.get(key)!.entries.length) this.definitionsVersion++;
       this.documents.delete(key);
     }
   }
@@ -91,7 +112,8 @@ export class CoCatalog {
   }
 
   get entries() {
-    if (this.cached?.version === this.version) return this.cached.entries;
+    if (this.cached?.version === this.definitionsVersion)
+      return this.cached.entries;
     const definitions = new Map<string, Entry>();
     for (const { entries } of this.documents.values()) {
       const seen = new Set<string>();
@@ -107,7 +129,7 @@ export class CoCatalog {
     const entries = [...definitions.values()].sort((a, b) =>
       coSignature(a).localeCompare(coSignature(b)),
     );
-    this.cached = { version: this.version, entries };
+    this.cached = { version: this.definitionsVersion, entries };
     return entries;
   }
 }

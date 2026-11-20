@@ -92,7 +92,7 @@ function applyTheme() {
 applyTheme();
 window.addEventListener("ke-theme", applyTheme);
 
-// Monaco consumes the local worker; completion policy lives in editable language files.
+// Monaco consumes the local worker; the KE language decides what can be completed.
 export function createEditor(element: HTMLElement, save: () => void) {
   const editor = monaco.editor.create(element, {
     language: "ke",
@@ -184,6 +184,23 @@ export function createEditor(element: HTMLElement, save: () => void) {
   ) => {
     if (!state)
       return Promise.resolve({ issues: [], completions: [], highlights: [] });
+    const request = () =>
+      post("analyze", {
+        domain: state.domain.id,
+        questionId: state.question?.id,
+        draft: state.question?.draft,
+        editorContext: state.editorContext,
+        text: model.getValue(),
+        offset,
+        completion: {
+          ...options,
+          manual,
+          onEnter,
+          enabled: completion && options.enabled !== false,
+        },
+      });
+    // Other questions can add CO while this document and its cursor stay unchanged.
+    if (completion) return request();
     const key = [
       state.domain.id,
       state.editorContext,
@@ -195,20 +212,7 @@ export function createEditor(element: HTMLElement, save: () => void) {
       if (cache.size >= 8) cache.delete(cache.keys().next().value!);
       cache.set(
         key,
-        post("analyze", {
-          domain: state.domain.id,
-          questionId: state.question?.id,
-          draft: state.question?.draft,
-          editorContext: state.editorContext,
-          text: model.getValue(),
-          offset,
-          completion: {
-            ...options,
-            manual,
-            onEnter,
-            enabled: completion && options.enabled !== false,
-          },
-        }).catch((error) => {
+        request().catch((error) => {
           cache.delete(key);
           throw error;
         }),

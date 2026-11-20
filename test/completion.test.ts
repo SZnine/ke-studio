@@ -123,6 +123,35 @@ describe("Contextual completion", () => {
     expect(result.map((c) => c.name)).not.toContain("length");
     expect(result.map((c) => c.name)).not.toContain("__GivenAC");
   });
+  it("offers newly declared CO and scoped values in an unfinished multiline comprehension", async () => {
+    const source = `concept Point;
+op live_midpoint(Point, Point): Point;
+op live_length(Point, Point): Number;
+output = {
+  m |
+  a : Point,
+  b : Point,
+  m : Point,
+  m = §
+};`;
+    const choices = await smart(source);
+    expect(choices.map(({ name }) => name)).toEqual(expect.arrayContaining(["a", "b", "live_midpoint"]));
+    expect(choices.some(({ name }) => name === "live_length")).toBe(false);
+    const args = await smart(source.replace("= §", "= live_midpoint(a, §)"));
+    expect(args.map(({ name }) => name)).toEqual(expect.arrayContaining(["a", "b"]));
+    expect(args.some(({ name }) => name === "live_length")).toBe(false);
+  });
+  it("finds a declared predicate at the start of a rule or a comprehension clause", async () => {
+    const header = "concept Point;\nop concurrent(Point, Point): Bool;\na : Point;\nb : Point;\n";
+    for (const body of [
+      "conc§(a, b) = true;",
+      "a = b :- a : Point, conc§(a, b) = true;",
+      "output = { a | a : Point, conc§(a, b) = true };",
+    ]) {
+      const completion = (await smart(header + body)).find(({ name }) => name === "concurrent");
+      expect(completion?.insert).toBe("concurrent");
+    }
+  });
   it("does not show a long menu after arithmetic, while explicit completion remains available", async () => {
     const source =
       declarations +

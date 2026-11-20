@@ -125,7 +125,7 @@ function callAt(a: Analysis, offset: number, p: Profile) {
     (best, choice, i) => (score(choice) > score(choices[best]) ? i : best),
     0
   );
-  return { frame, choices, activeSignature };
+  return { frame, choices, activeSignature, argumentType: (index: number) => actualType(frame.args[index] ?? []) };
 }
 
 export async function inspect(
@@ -160,6 +160,8 @@ export async function inspect(
     p.surface.ProjectionClose[0]
   ]);
   const frames: { token: Token; name?: string; filtered: boolean; index: number }[] = [];
+  let statementEnd = 0;
+  let inRule = false;
   for (const [i, token] of before.entries()) {
     if (opens.has(token.text))
       frames.push({ token, name: before[i - 1]?.text, filtered: false, index: 0 });
@@ -167,6 +169,15 @@ export async function inspect(
     else if (p.surface.Filter.includes(token.text) && frames.at(-1)) frames.at(-1)!.filtered = true;
     else if (p.surface.ArgumentSeparator.includes(token.text) && frames.at(-1))
       frames.at(-1)!.index++;
+    else if (!frames.length && p.surface.RuleArrow.includes(token.text)) inRule = true;
+    else if (
+      !frames.length &&
+      p.surface.StatementSeparator.includes(token.text) &&
+      !(inRule && p.surface.RuleSeparator.includes(token.text))
+    ) {
+      statementEnd = token.end;
+      inRule = false;
+    }
   }
   const frame = frames.at(-1);
   const depth = frames.length;
@@ -178,8 +189,7 @@ export async function inspect(
     p.surface.CallOpen.includes(frame.token.text) &&
     typeConstructors.includes(frame.name || '') &&
     (!call || frames.some((opened) => p.surface.SetKeyword.includes(opened.name || '')));
-  const statementStart =
-    !depth && (!previous || p.surface.StatementSeparator.includes(previous.text));
+  const statementStart = !depth && !inRule && (!previous || statementEnd === previous.end);
   const next = a.program.tokens.find(
     (t) => t.start >= replace.end && !['comment', 'eof'].includes(t.kind)
   );
@@ -297,14 +307,20 @@ export async function inspect(
       .sort(([a], [b]) => a.start - b.start);
     const leftType = leftTypes[0]?.[1] || symbols.get(before.at(-2)?.text || '')?.type;
     const numericOperand = operator?.category === 'arithmetic' || operator?.category === 'ordering';
-    const isNumeric = a.isNumeric ?? ((type: string) =>
-      isNumericType(type, p) || isCompatible(type, p.numberLiteralType, a.compatibility, false));
+    const isNumeric = (type: string, compatibility: Profile['compatibility']) =>
+      (a.isNumeric?.(type) ?? isNumericType(type, p)) ||
+      isCompatible(type, p.numberLiteralType, compatibility, false);
+    const activeSignature = call?.choices[call.activeSignature];
+    const contract = activeSignature?.contract;
+    const callback = call && contract?.callback === call.frame.index ? contract : undefined;
+    const collection = callback?.collection === undefined ? undefined : call?.argumentType(callback.collection);
+    const callbackElement = collection?.startsWith('set{') ? collection.slice(4, -1) : undefined;
     const expected =
       numericOperand
         ? undefined
-        : operator?.category === 'assertion' && leftType !== '?'
+        : operator?.category === 'assertion' && leftType && leftType !== '?'
           ? leftType
-          : call?.choices[call.activeSignature].params[call.frame.index];
+          : call && activeSignature?.params[call.frame.index];
     const declarationStarts = [
       p.keywords.concept,
       p.operatorAliases[0],
@@ -313,21 +329,46 @@ export async function inspect(
     const starts = [...declarationStarts, ...p.outputNames];
     const declarationPrefix =
       statementStart && starts.some((name) => name.toLowerCase().startsWith(prefix.toLowerCase()));
+    const existingCall = !!prefix && [...p.surface.CallOpen, ...p.surface.ProjectionOpen].includes(next?.text || '');
+    const expressionSlot =
+      nameSlots.includes('NamedExpression') ||
+      (!declaration && !inType && (
+        existingCall ||
+        (statementStart && !!prefix) ||
+        clauseStart ||
+        (inRule && [...p.surface.RuleArrow, ...p.surface.RuleSeparator].includes(previous?.text || '')) ||
+        (domainPosition && !declarationName) ||
+        (depth > 0 && [...opens, ...p.surface.ArgumentSeparator].includes(previous?.text || '')) ||
+        !!operator
+      ));
+    const discoverInBody =
+      !declarationName && !inType &&
+      (expressionSlot || domainPosition) &&
+      ((!!prefix && (!declarationPrefix || existingCall)) ||
+        (options.manual && ((expected && expected !== '?') || numericOperand || domainPosition)));
+    const usePosition = before.find((token) => token.start >= statementEnd)?.start ?? replace.start;
     const arithmeticGap = !prefix && operator?.category === 'arithmetic';
     const editingNumber = a.program.tokens.some(
       (t) => t.kind === 'number' && t.start < offset && offset <= t.end
     );
-    const candidates = declarationName ? globalSymbols(p) : symbols;
+    const candidates = declarationName ? globalSymbols(p) : new Map(symbols);
     const discoveredNames = new Set<string>();
-    if (discovery && declarationName !== undefined)
+    if (discovery && (declarationName !== undefined || discoverInBody))
       for (const [name, symbol] of globalSymbols(discovery)) {
         if (symbols.has(name) || candidates.has(name)) continue;
+        if (!declarationName && symbol.kind !== 'concept' && symbol.kind !== 'operator') continue;
         candidates.set(name, symbol);
         discoveredNames.add(name);
       }
+    const discoveryCompatibility = discoveredNames.size
+      ? {
+          ...Object.fromEntries(Object.entries(discovery?.compatibility ?? {}).filter(([type]) => !symbols.has(type))),
+          ...a.compatibility
+        }
+      : a.compatibility;
     for (const symbol of candidates.values()) {
-      if (!nameSlots.length && !declarationName && !inType) continue;
-      if (nameSlots.includes('LocalBinding')) continue;
+      if (!nameSlots.length && !declarationName && !inType && !expressionSlot) continue;
+      if (nameSlots.includes('LocalBinding') && !expressionSlot) continue;
       if (declarationName === 'ConstantDeclaration') continue;
       if (declarationName === 'ConceptDeclaration' && symbol.kind !== 'concept') continue;
       if (
@@ -353,7 +394,8 @@ export async function inspect(
       const named = symbol.declaration?.nameSpan;
       if (!declarationName && named && named.start <= offset && offset <= named.end) continue;
       if (!options.manual && (arithmeticGap || editingNumber || clauseGap)) continue;
-      if (statementStart && (!prefix || declarationPrefix)) continue;
+      if (statementStart && (!prefix || (declarationPrefix && !existingCall && !symbol.declaration))) continue;
+      if (existingCall && !declarationName && symbol.kind !== 'operator') continue;
       // A type name belongs in a declaration/domain, not among ordinary expression values.
       if (
         !declarationName &&
@@ -371,6 +413,7 @@ export async function inspect(
       const choices = signatures(symbol);
       for (const choice of choices) {
         const discovered = discoveredNames.has(choice.name);
+        const compatibility = discovered ? discoveryCompatibility : a.compatibility;
         if (declarationName === 'OperatorDeclaration' && a.program.statements.some((declaration) =>
           declaration.kind === 'operator' && declaration.name === choice.name &&
           (declaration.nameSpan.end < replace.start || declaration.nameSpan.start > replace.end) &&
@@ -383,9 +426,15 @@ export async function inspect(
               : choice.kind === 'operator' && expected === 'operator'
                 ? 'operator'
                 : choice.type;
-          if (numericOperand && !isNumeric(actual)) continue;
-          if (expected && !isCompatible(actual, expected, a.compatibility, false)) continue;
+          if (numericOperand && !isNumeric(actual, compatibility)) continue;
+          if (expected && expected !== '?' && !isCompatible(actual, expected, compatibility, false)) continue;
         }
+        if (callback && (
+          choice.kind !== 'operator' ||
+          choice.params.length !== 1 ||
+          (callbackElement && !isCompatible(callbackElement, choice.params[0], compatibility)) ||
+          (callback.numeric && !isNumeric(choice.type, compatibility))
+        )) continue;
         const sourceProfile = discovered ? discovery! : p;
         const formal = choice.kind === 'concept'
           ? sourceProfile.symbolAliases.concepts
@@ -434,13 +483,13 @@ export async function inspect(
           }
         }
         let suggest = smart && snippet;
-        if (discovered && !completeDeclaration) continue;
+        if (discovered && declarationName && !completeDeclaration) continue;
         if (
           smart &&
           call &&
           !declarationName &&
           !domainPosition &&
-          choice.kind !== 'operator' &&
+          (choice.kind !== 'operator' || expected === 'operator') &&
           call.choices.every((s) => s.params.length > call.frame.index + 1) &&
           call.frame.args[call.frame.index].every(
             (t) => replace.start <= t.start && t.end <= replace.end
@@ -479,7 +528,7 @@ export async function inspect(
           // Let the language service own matching/ranking, including pinyin aliases.
           filter: prefix || choice.name,
           sort: order(
-            constructorPrefix ||
+            constructorPrefix || declarationPrefix ||
               (!prefix && !declarationName && !domainPosition && choice.kind === 'operator')
               ? 1
               : 0,
@@ -493,7 +542,8 @@ export async function inspect(
             name: choice.name,
             type: choice.type,
             params: choice.params,
-            position: previous!.start
+            position: declarationName ? previous!.start : usePosition,
+            inBody: !declarationName
           } : undefined
         });
       }
