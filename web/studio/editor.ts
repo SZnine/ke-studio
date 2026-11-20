@@ -165,6 +165,33 @@ export function createEditor(element: HTMLElement, save: () => void) {
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, save);
   let state: Workspace,
     options: any = { callStyle: "smart" };
+  let requestedCompletionVersion = -1;
+  let retryCompletion: number | undefined;
+  editor.onDidChangeCursorPosition(({ source, reason, position }) => {
+    window.clearTimeout(retryCompletion);
+    if (
+      source !== "keyboard" ||
+      reason !== monaco.editor.CursorChangeReason.NotSet ||
+      options.enabled === false ||
+      !/^[\p{L}_]/u.test(model.getWordUntilPosition(position).word)
+    )
+      return;
+    const version = model.getVersionId();
+    const session = completionSession.revision;
+    // A fast edit can overtake Monaco's async suggestion request and skip the final prefix.
+    retryCompletion = window.setTimeout(() => {
+      if (
+        requestedCompletionVersion === version ||
+        model.getVersionId() !== version ||
+        !editor.getPosition()?.equals(position) ||
+        !editor.hasTextFocus() ||
+        !completionSession.accepts(session)
+      )
+        return;
+      editor.trigger("ke", "editor.action.triggerSuggest", { auto: true });
+    }, 80);
+  });
+  editor.onDidDispose(() => window.clearTimeout(retryCompletion));
   let providers: monaco.IDisposable[] = [],
     configuration: monaco.IDisposable | undefined;
   const changed = new monaco.Emitter<void>();
@@ -242,6 +269,7 @@ export function createEditor(element: HTMLElement, save: () => void) {
           const request = completionSession.revision;
           const version = model.getVersionId(),
             context = state.editorContext;
+          requestedCompletionVersion = version;
           const result = await inspect(
             model.getOffsetAt(position),
             manualCompletion,
