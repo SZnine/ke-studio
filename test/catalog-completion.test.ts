@@ -19,6 +19,9 @@ beforeAll(async () => {
     name: "CO 索引",
     text: `concept Archived;
 concept ArchivedNumber <: Number;
+concept ArchiveBase;
+concept ArchiveBranch <: ArchiveBase;
+concept ArchiveLeaf <: ArchiveBranch;
 op archived_score(Archived): Number;
 op archived_numeric(Number): ArchivedNumber;
 op diff_ordered(tuple(Number, Number)): Number;
@@ -34,8 +37,8 @@ async function inspect(input: string, manual = false) {
   return language.inspect(input.replace("§", ""), offset, profile, { manual, callStyle: "smart" }, discovery);
 }
 
-function applyCompletion(input: string, completion: { edits: { start: number; end: number; text: string }[]; replace: { start: number; end: number }; insert: string }) {
-  return [...completion.edits, { ...completion.replace, text: completion.insert }]
+function applyCompletion(input: string, completion: { edits?: { start: number; end: number; text: string }[]; replace: { start: number; end: number }; insert: string }) {
+  return [...(completion.edits ?? []), { ...completion.replace, text: completion.insert }]
     .sort((a, b) => b.start - a.start)
     .reduce(
       (text, { start, end, text: replacement }) => text.slice(0, start) + replacement + text.slice(end),
@@ -65,6 +68,47 @@ it("completes catalog declarations with their dependencies", async () => {
   const source = applyCompletion(request, completion);
   expect(source).toContain("concept Archived;");
   expect(language.analyze(source, profile).issues).toEqual([]);
+});
+
+it.each([
+  "op local_value(NaturalN§): Number;",
+  "op local_value(value : NaturalN§): Number;",
+  "op local_value(Number): NaturalN§;",
+  "op local_value(set(tuple(NaturalN§, Number))): Number;",
+])("reuses local concepts when editing existing signature text (%s)", async (signature) => {
+  const request = "concept Number;\nconcept NaturalNumber <: Number;\n" + signature;
+  const { completions } = await inspect(request);
+  const type = completions.find(({ name }) => name === "NaturalNumber")!;
+  expect(type).toMatchObject({ kind: "type" });
+  const source = applyCompletion(request, type);
+  expect(source.match(/concept NaturalNumber/g)).toHaveLength(1);
+  expect(language.analyze(source, profile).issues).toEqual([]);
+});
+
+it.each([
+  "op local_value(ArchiveL§): Number;",
+  "op local_value(Number): ArchiveL§;",
+  "op local_value(set(tuple(Number, ArchiveL§))): Number;",
+  "v : ArchiveL§;",
+  "concept Local <: ArchiveL§;",
+])("imports a concept's ancestry into the correct position (%s)", async (declaration) => {
+  const request = "concept Number;\nconcept ArchiveBase;\n" + declaration;
+  const { completions } = await inspect(request);
+  const type = completions.find(({ name }) => name === "ArchiveLeaf")!;
+  expect(type).toMatchObject({ kind: "type" });
+  const source = applyCompletion(request, type);
+  expect(source).toContain(
+    "concept ArchiveBase;\nconcept ArchiveBranch <: ArchiveBase;\nconcept ArchiveLeaf <: ArchiveBranch;\n",
+  );
+  expect(source.match(/concept ArchiveBase/g)).toHaveLength(1);
+  expect(language.analyze(source, profile).issues).toEqual([]);
+});
+
+it("does not import an external parent which would create a cycle or put its ancestor after the use", async () => {
+  const cyclic = await inspect("concept ArchiveBase <: ArchiveL§;");
+  expect(cyclic.completions.some(({ name }) => name === "ArchiveLeaf")).toBe(false);
+  const forward = await inspect("concept Local <: ArchiveL§;\nconcept ArchiveBase;");
+  expect(forward.completions.some(({ name }) => name === "ArchiveLeaf")).toBe(false);
 });
 
 it("offers explicitly named catalog calls and inserts their declarations on selection", async () => {

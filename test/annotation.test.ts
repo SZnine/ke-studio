@@ -394,11 +394,15 @@ output = {(a, x) |
       .edits,
   ).toEqual([]);
   const typing = restated + "\nop sq";
-  expect(
-    (
-      await language.inspect(typing, typing.length, scope, { manual: true })
-    ).completions.some((choice) => choice.name === "sqrt"),
-  ).toBe(false);
+  const matching = (
+    await language.inspect(typing, typing.length, scope, { manual: true })
+  ).completions.filter((choice) => choice.name === "sqrt");
+  expect(matching).toEqual([
+    expect.objectContaining({
+      insert: "",
+      reuseDeclaration: restated.indexOf("sqrt"),
+    }),
+  ]);
   const conflict = "concept Number; concept String; op sqrt(Number) : String;";
   expect(language.analyze(conflict, scope).issues).toEqual([
     expect.objectContaining({

@@ -193,6 +193,8 @@ export async function inspect(
   const next = a.program.tokens.find(
     (t) => t.start >= replace.end && !['comment', 'eof'].includes(t.kind)
   );
+  const statementIndex = before.findIndex((token) => token.start >= statementEnd);
+  const statementHead = before[statementIndex];
   const completions: any[] = [];
   const descriptionMatches: any[] = [];
   const services = parser.syntaxServices();
@@ -210,8 +212,15 @@ export async function inspect(
         while (node && node.$type !== 'ParserRule') node = node.$container;
         return node?.name;
       });
+    // Langium can omit name slots while editing a simple type in a parsed signature.
+    const operatorHeader = p.operatorAliases.includes(statementHead?.text || '') &&
+      before.length > statementIndex + 2;
+    const signatureType = operatorHeader && (
+      (depth > 0 && !(depth === 1 && p.surface.Colon.includes(next?.text || ''))) ||
+      (depth === 0 && p.surface.Colon.includes(previous?.text || ''))
+    );
     // Membership domains are expressions in the grammar. Their constructors take types.
-    const inType = insideConstructedType || nameSlots.includes('NamedType');
+    const inType = insideConstructedType || signatureType || nameSlots.includes('NamedType');
     const declarationName =
       p.surface.ConceptKeyword.includes(previous?.text || '')
         ? 'ConceptDeclaration'
@@ -220,6 +229,41 @@ export async function inspect(
           : previous?.text === p.keywords.constant
             ? 'ConstantDeclaration'
             : undefined;
+    if (prefix && (declarationName === 'ConceptDeclaration' || declarationName === 'OperatorDeclaration')) {
+      const keyword = previous!;
+      const line = document.positionAt(keyword.start).line;
+      const lineStart = document.offsetAt({ line, character: 0 });
+      const lineEnd = source.slice(replace.end).search(/[\r\n]/);
+      const tail = source.slice(replace.end, lineEnd < 0 ? source.length : replace.end + lineEnd).trim();
+      // Only offer to remove a bare draft. It may otherwise be an intentional new overload.
+      if (
+        document.positionAt(replace.end).line === line &&
+        !source.slice(lineStart, keyword.start).trim() &&
+        (!tail || p.surface.StatementSeparator.includes(tail))
+      ) {
+        const end = tail && next ? next.end : replace.end;
+        const kind = declarationName === 'ConceptDeclaration' ? 'concept' : 'operator';
+        const seen = new Set<string>();
+        for (const declaration of a.program.statements) {
+          if (declaration.kind !== kind || declaration.end > keyword.start) continue;
+          const name = declaration.name;
+          if (!name.toLowerCase().startsWith(prefix.toLowerCase()) || seen.has(name)) continue;
+          seen.add(name);
+          const target = declaration.nameSpan.start;
+          completions.push({
+            name,
+            kind: kind === 'concept' ? 'type' : 'operator',
+            label: `第 ${document.positionAt(target).line + 1} 行已声明`,
+            detail: '移除当前未完成的声明并跳转',
+            insert: '',
+            replace: { start: keyword.start, end },
+            filter: source.slice(keyword.start, offset),
+            sort: order(1),
+            reuseDeclaration: target
+          });
+        }
+      }
+    }
     const domainPosition =
       inType || [...p.surface.Colon, ...p.surface.Subtype].includes(previous?.text || '');
     const typeKeywords = new Set([...typeConstructors, ...(p.surface.NamedType || [])]);
@@ -346,16 +390,18 @@ export async function inspect(
       (expressionSlot || domainPosition) &&
       ((!!prefix && (!declarationPrefix || existingCall)) ||
         (options.manual && ((expected && expected !== '?') || numericOperand || domainPosition)));
-    const usePosition = before.find((token) => token.start >= statementEnd)?.start ?? replace.start;
+    const discoverInType = inType && !declarationName && (!!prefix || options.manual);
+    const usePosition = statementHead?.start ?? replace.start;
     const arithmeticGap = !prefix && operator?.category === 'arithmetic';
     const editingNumber = a.program.tokens.some(
       (t) => t.kind === 'number' && t.start < offset && offset <= t.end
     );
     const candidates = declarationName ? globalSymbols(p) : new Map(symbols);
     const discoveredNames = new Set<string>();
-    if (discovery && (declarationName !== undefined || discoverInBody))
+    if (discovery && (declarationName !== undefined || discoverInBody || discoverInType))
       for (const [name, symbol] of globalSymbols(discovery)) {
         if (symbols.has(name) || candidates.has(name)) continue;
+        if (discoverInType && symbol.kind !== 'concept') continue;
         if (!declarationName && symbol.kind !== 'concept' && symbol.kind !== 'operator') continue;
         candidates.set(name, symbol);
         discoveredNames.add(name);
@@ -543,7 +589,8 @@ export async function inspect(
             type: choice.type,
             params: choice.params,
             position: declarationName ? previous!.start : usePosition,
-            inBody: !declarationName
+            inBody: !declarationName,
+            conceptReference: !declarationName && choice.kind === 'concept' && domainPosition
           } : undefined
         });
       }
@@ -552,6 +599,8 @@ export async function inspect(
       const keywords = new Set<string>();
       for (const { feature } of features)
         if (feature.$type === 'Keyword') keywords.add(feature.value);
+      if (signatureType)
+        for (const name of [...p.surface.SetKeyword, ...(p.surface.NamedType ?? [])]) keywords.add(name);
       if (domainPosition && tupleConstructors[0]) keywords.add(tupleConstructors[0]);
       // With an optional final terminator, a partial declaration keyword can
       // parse as a finished expression. Restore declaration choices at its start.

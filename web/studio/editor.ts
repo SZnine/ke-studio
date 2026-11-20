@@ -142,6 +142,12 @@ export function createEditor(element: HTMLElement, save: () => void) {
   });
   editor.onDidCompositionStart(() => completionSession.resume());
   const finishCompletionId = editor.addCommand(0, dismissCompletions);
+  const reuseDeclarationId = editor.addCommand(0, (_, offset: number) => {
+    dismissCompletions();
+    const position = model.getPositionAt(offset);
+    editor.setPosition(position);
+    editor.revealPositionInCenterIfOutsideViewport(position);
+  });
   const completeNextId = editor.addCommand(0, () => {
     if (completionSession.dismissed) return;
     editor.trigger("ke", "editor.action.triggerParameterHints", {});
@@ -312,21 +318,28 @@ export function createEditor(element: HTMLElement, save: () => void) {
                 range: range(edit.start, edit.end),
                 text: edit.text,
               })),
-              command: s.finished
-                ? finishCompletion
-                : s.suggest
-                  ? completeNext
-                  : s.kind === "operator" && s.snippet
-                    ? {
-                        id: "editor.action.triggerParameterHints",
-                        title: "参数提示",
-                      }
-                    : s.kind === "keyword" && s.snippet
-                      ? {
-                          id: "editor.action.triggerSuggest",
-                          title: "类型补全",
-                        }
-                      : undefined,
+              command:
+                s.reuseDeclaration !== undefined && reuseDeclarationId
+                  ? {
+                      id: reuseDeclarationId,
+                      title: "转到已有声明",
+                      arguments: [s.reuseDeclaration],
+                    }
+                  : s.finished
+                    ? finishCompletion
+                    : s.suggest
+                      ? completeNext
+                      : s.kind === "operator" && s.snippet
+                        ? {
+                            id: "editor.action.triggerParameterHints",
+                            title: "参数提示",
+                          }
+                        : s.kind === "keyword" && s.snippet
+                          ? {
+                              id: "editor.action.triggerSuggest",
+                              title: "类型补全",
+                            }
+                          : undefined,
             })),
           };
         },

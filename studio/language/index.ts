@@ -15,7 +15,7 @@ import { defaults, profile, type Profile } from './profile';
 import { combineLibraries, emptyLibrary, readHeader, renderEntry, type Entry } from './ontology';
 import { withLibrary } from './library';
 import { inspect, format, tokenTypes, type CompletionOptions } from './editor';
-import { annotate, moveDeclaration, type AnnotationRequest } from './annotation';
+import { annotate, annotateConceptReference, moveDeclaration, type AnnotationRequest, type TextEdit } from './annotation';
 
 class PublishedAstReflection extends AbstractAstReflection {
   constructor(readonly types: CompiledGrammar['types']) {
@@ -175,14 +175,20 @@ export function createLanguageFromCompiled(
         if (!request) return true;
         delete item.catalogDeclaration;
         try {
-          const plan = annotate(text, request, analysis, discovery, request.inBody);
-          if (plan.draft) return false;
-          if (request.kind === 'concept' && !request.inBody) {
-            const target = plan.declaration.slice(p.keywords.concept.length + 1, -p.style.statement.length);
-            item.insert = target + item.insert.slice(request.name.length);
+          let edits: TextEdit[];
+          if (request.conceptReference) {
+            edits = annotateConceptReference(text, request.name, request.position, analysis, p, discovery);
+          } else {
+            const plan = annotate(text, request, analysis, discovery, request.inBody);
+            if (plan.draft) return false;
+            if (request.kind === 'concept' && !request.inBody) {
+              const target = plan.declaration.slice(p.keywords.concept.length + 1, -p.style.statement.length);
+              item.insert = target + item.insert.slice(request.name.length);
+            }
+            edits = plan.edits;
           }
           const insertions = new Map<number, string>();
-          for (const edit of plan.edits) {
+          for (const edit of edits) {
             const start = Math.min(edit.start, request.position);
             const value = start === edit.start ? edit.text : edit.text.trimStart();
             insertions.set(start, (insertions.get(start) ?? '') + value);

@@ -3,6 +3,7 @@ import { describeDeclaration } from './editor';
 import type { Profile } from './profile';
 import type { Declaration, Span } from './ast';
 import { isEquivalent, sameParameters, typeParts } from './types';
+import { canonicalName } from './symbol-aliases';
 
 export interface AnnotationRequest {
   kind: 'concept' | 'operator';
@@ -19,6 +20,57 @@ function endOfStatement(a: Analysis, source: string, item: Span) {
     (d) => d.role === 'statement' && d.start >= item.end && !source.slice(item.end, d.start).trim()
   );
   return separator?.end ?? item.end;
+}
+
+function conceptDeclaration(p: Profile, name: string, parent?: string) {
+  return `${p.keywords.concept} ${name}${parent ? ' ' + p.surface.Subtype[0] + ' ' + parent : ''}${p.style.statement}`;
+}
+
+/** Catalog types must be declared before use, after any ancestors already in the document. */
+export function annotateConceptReference(
+  source: string,
+  name: string,
+  statementStart: number,
+  a: Analysis,
+  profile: Profile,
+  catalog: Profile,
+): TextEdit[] {
+  const canonical = (name: string) => canonicalName(profile.symbolAliases.concepts, name);
+  const known = globalSymbols(catalog);
+  const editing = a.program.statements.find((statement) => statement.start === statementStart);
+  const resolving = new Set(editing?.kind === 'concept' ? [canonical(editing.name)] : []);
+  const insertions = new Map<number, string[]>();
+
+  function include(name: string, before: number): number {
+    name = canonical(name);
+    if (resolving.has(name)) throw new Error('概念的父级关系形成循环');
+    const local = a.symbols.get(name);
+    const symbol = known.get(name);
+    if (local?.kind !== 'concept' && (local || symbol?.kind !== 'concept'))
+      throw new Error('找不到概念 ' + name);
+    const existing = local?.declaration;
+    if (existing && existing.start >= before) throw new Error('请将概念的声明移到使用之前');
+    const parent = existing
+      ? (existing.parent ? typeName(existing.parent) : profile.typeMetadata[name]?.parent)
+      : catalog.typeMetadata[name]?.parent;
+    resolving.add(name);
+    const after = parent ? include(parent, existing?.start ?? before) : 0;
+    resolving.delete(name);
+    if (existing) return endOfStatement(a, source, existing);
+    const start = a.program.statements.find((statement) => statement.start >= after)?.start ?? before;
+    if (start > before) throw new Error('请将概念的声明移到使用之前');
+    const lines = insertions.get(start) ?? [];
+    lines.push(conceptDeclaration(catalog, name, parent));
+    insertions.set(start, lines);
+    return start;
+  }
+
+  include(name, statementStart);
+  return [...insertions].map(([start, lines]) => ({
+    start,
+    end: start,
+    text: (start > 0 && !source.slice(0, start).endsWith('\n') ? '\n' : '') + lines.join('\n') + '\n',
+  }));
 }
 
 /** A selected evidence span requests declarations; the current grammar and CO own their spelling. */
@@ -46,8 +98,6 @@ export function annotate(source: string, request: AnnotationRequest, a: Analysis
     groups.set(group, [...(groups.get(group) || []), text]);
     added.push(name);
   };
-  const conceptDeclaration = (name: string, parent?: string) =>
-    `${p.keywords.concept} ${name}${parent ? ' ' + p.surface.Subtype[0] + ' ' + parent : ''}${p.style.statement}`;
   const concept = (name: string, include = true) => {
     if (visited.has(name)) return;
     visited.add(name);
@@ -58,7 +108,7 @@ export function annotate(source: string, request: AnnotationRequest, a: Analysis
     if (current && current.kind !== 'concept') throw new Error(`文档中已有其他同名声明 ${name}。`);
     const parent = existing?.parent?.name || p.typeMetadata[name]?.parent;
     if (parent) concept(parent);
-    if (!existing && include) append(0, conceptDeclaration(name, parent), name);
+    if (!existing && include) append(0, conceptDeclaration(p, name, parent), name);
   };
   const includeType = (type: string) => {
     const parts = typeParts(type);
@@ -70,7 +120,7 @@ export function annotate(source: string, request: AnnotationRequest, a: Analysis
   if (request.kind === 'concept') {
     concept(request.name, includeTarget);
     existing = declarations.find((d) => d.kind === 'concept' && d.name === request.name);
-    declaration = conceptDeclaration(request.name, p.typeMetadata[request.name]?.parent);
+    declaration = conceptDeclaration(p, request.name, p.typeMetadata[request.name]?.parent);
   } else if (request.kind === 'operator') {
     const symbol = symbols.get(request.name);
     if (symbol?.kind !== 'operator') throw new Error('请选择当前 CO 中的算子。');

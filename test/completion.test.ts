@@ -85,6 +85,36 @@ __GivenAC: Real;
 __RightAngle: Angle;
 `;
 describe("Contextual completion", () => {
+  it("offers to reuse an earlier CO declaration without inserting a duplicate", async () => {
+    const concepts = "concept Number;\nconcept NaturalNumber;\n";
+    const input = concepts + "concept NaturalN§\ncount : NaturalNumber;";
+    const existing = (await smart(input)).find(({ name }) => name === "NaturalNumber");
+    expect(existing).toMatchObject({
+      label: "第 2 行已声明",
+      reuseDeclaration: concepts.indexOf("NaturalNumber"),
+    });
+    expect(applyCompletion(input, existing)).toBe(
+      concepts + "\ncount : NaturalNumber;",
+    );
+
+    const operators = concepts + "op count_terms(NaturalNumber) : Number;\n";
+    const operator = (await smart(operators + "op count_t§;")).find(
+      ({ name }) => name === "count_terms",
+    );
+    expect(operator?.reuseDeclaration).toBe(operators.indexOf("count_terms"));
+    expect(applyCompletion(operators + "op count_t§;", operator)).toBe(operators);
+    expect(
+      (await smart(operators + "op count_t§(Number) : Number;")).some(
+        ({ reuseDeclaration }) => reuseDeclaration !== undefined,
+      ),
+    ).toBe(false);
+    expect(
+      (await smart(concepts + "concept NaturalN§ // keep this comment")).some(
+        ({ reuseDeclaration }) => reuseDeclaration !== undefined,
+      ),
+    ).toBe(false);
+  });
+
   it("offers declaration entries rather than library symbols at a new statement", async () => {
     const result = await complete("concept Shape;\nc§");
     expect(result.map((c) => c.name)).toEqual(["concept", "const"]);
